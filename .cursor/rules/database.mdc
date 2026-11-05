@@ -1,0 +1,43 @@
+---
+description: PostgreSQL、SQLAlchemy 2.x、版本保留、Alembic 迁移与 AsyncSession 事务规范。
+alwaysApply: true
+---
+
+# 数据库
+
+数据库使用 PostgreSQL + pgvector。
+
+## ORM
+
+使用 SQLAlchemy 2.x、`Mapped[T]`、`mapped_column()`、AsyncEngine、AsyncSession、timezone-aware datetime、PostgreSQL JSONB 和 pgvector 类型。禁止旧式 SQLAlchemy ORM 写法。
+
+## 约束
+
+用数据库约束保证完整性：主键、外键、唯一约束、CHECK、必要的复合唯一约束、复合外键、部分唯一索引。重要完整性不能只靠 Python 代码。
+
+## 版本
+
+Persona、Memory、State Event 和重要动态配置必须保留版本或历史。禁止直接覆盖需要保留历史的数据。修改人格或记忆时创建新版本，并记录变更原因。
+
+```python
+# 错误：覆盖当前人格或记忆正文
+profile.traits = new_traits
+
+# 正确：新增版本并记录原因，当前指针切到新版本
+await persona_repository.add_version(session, profile_id, content, reason)
+```
+
+## 迁移
+
+- 结构变更只用 Alembic。
+- 禁止运行时自动建表或改表，禁止用 ORM 自动同步代替迁移。
+- 迁移必须考虑已有数据。不允许随意删除已有字段或表。
+- 数据迁移必须有明确升级路径和必要的回滚方案。
+- 默认初始化数据用独立、幂等的初始化脚本，可重复执行，不重复插入，不覆盖用户已改配置。
+
+## Session
+
+- 每个 HTTP 请求、每个后台任务使用独立 AsyncSession。
+- 不跨请求或任务共享 Session。
+- Service 管理事务，Repository 不提交。失败必须回滚。
+- 多个业务实体的修改放在同一事务中。

@@ -1,0 +1,26 @@
+---
+description: State Engine 情绪、关系、交互、动机状态的快照、事件与乐观锁约束。
+alwaysApply: true
+---
+
+# State Engine
+
+状态必须分开：
+
+- Emotion：情绪状态
+- Relationship：关系状态
+- Interaction：交互状态
+- Motivation：动机状态
+
+规则：
+
+- 当前状态保存为快照，历史变化用 StateEvent 追加。
+- 快照和 StateEvent 在同一事务中更新。
+- 用 version 做乐观锁。
+- 不允许无依据地随机修改状态。每次变化必须有来源和原因。
+- 情绪和关系是 AI 内部交互状态，不得实现成用户可见的好感度数值。
+
+```text
+# 错误：用户说一句喜欢，就把 affection_score 加 10 并覆盖旧状态
+# 正确：同一事务更新快照 version，并追加带来源和原因的 StateEvent
+```

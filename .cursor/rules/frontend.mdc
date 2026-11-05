@@ -1,0 +1,32 @@
+---
+description: Vue 3、TypeScript、OpenAPI 类型与 Electron 安全约束。
+alwaysApply: true
+---
+
+# 前端
+
+使用 Vue 3 + TypeScript + Vite。
+
+- 使用 Composition API 和 `<script setup>`。
+- TypeScript 使用严格模式。少用 `any` 绕过类型检查。
+- 组件职责明确。业务逻辑与 UI 展示分离，复杂业务逻辑不全部写在组件里。
+- API 调用集中管理。组件里不散落请求地址和重复请求逻辑。
+- 组件通过明确的 Props、Emits 或统一状态管理通信。
+- 后端 Pydantic Schema 是 API 契约的唯一来源。前端类型优先由 OpenAPI 生成，不长期手写重复的接口类型。
+- 对话流使用 POST、fetch、ReadableStream 和 AbortController，不使用原生 EventSource 发送这条 JSON 请求。
+- 按统一 SSE 事件类型更新界面。用 `message_id` 更新同一条消息，用 `sequence` 忽略重复事件。
+- Quiet 只结束加载，不显示空消息。失败和取消不能显示成正常完成。
+- 不解析模型供应商的原始流或原始错误。
+
+# Electron
+
+- Renderer 不得直接访问 Node.js。
+- 启用 `contextIsolation`，关闭不必要的 `nodeIntegration`。
+- 只通过 preload 暴露受控 IPC。
+- API Key 等敏感信息不写入前端代码。
+- 主进程负责本地 Python 服务的启动、监控和退出清理。
+
+```ts
+// 错误：渲染进程直接 require("fs")，或在组件里写死 http://127.0.0.1:8000/chat
+// 正确：preload 暴露有限 IPC；请求走统一 API 客户端和生成的类型
+```

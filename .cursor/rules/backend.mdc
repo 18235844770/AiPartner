@@ -1,0 +1,65 @@
+---
+description: Python 后端分层、Service 事务与 Repository 数据访问规范。
+alwaysApply: true
+---
+
+# 后端编码
+
+## Python
+
+- 使用类型注解。优先明确类型，避免大量 `Any`。
+- 用 Pydantic v2 定义数据结构和接口 Schema。
+- 用 SQLAlchemy 2.x Declarative Mapping。
+- 用 async/await 处理异步 I/O。
+- 函数和类职责单一。避免过长函数、过深嵌套和隐式副作用。
+- 禁止裸露的 `except:`。禁止吞掉异常后继续运行。
+- 重要业务逻辑必须记录日志并处理异常。
+
+## 目录
+
+```text
+apps/server/app/
+├── modules/
+│   ├── persona/
+│   ├── memory/
+│   ├── dialogue/
+│   ├── state/
+│   └── model_adapter/
+├── shared/
+│   ├── database/
+│   ├── redis/
+│   ├── events/
+│   ├── exceptions/
+│   └── utils/
+├── config/
+└── main.py
+```
+
+模块按实际复杂度使用 `domain/`、`services/`、`repositories/`、`api/`。不要求每个模块机械创建全部目录。禁止把不同职责混进同一个文件。
+
+## Service
+
+Service 是业务规则和事务的入口。
+
+- 负责业务规则、协调多个 Repository、提交和回滚事务、调用其他模块的公开接口。
+- 不解析 HTTP 请求，不直接调用第三方模型 SDK。
+
+## Repository
+
+Repository 只做数据访问。
+
+- 不 `commit`，不管理事务，不做复杂业务判断。
+- 不调用其他模块的 Repository。
+- 多个 Repository 可以共享同一个 AsyncSession。
+- 查询必须限定 Companion 和用户的数据范围。
+
+```python
+# 错误：Repository 提交事务，或 Service 直接调用 DeepSeek
+await session.commit()
+client.chat.completions.create(...)
+
+# 正确：Service 划定事务，模型调用交给 Model Adapter
+async with session.begin():
+    await memory_repository.add(session, memory)
+decision = await model_adapter.complete_structured(...)
+```

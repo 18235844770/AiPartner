@@ -1,0 +1,40 @@
+---
+description: Dialogue Engine 混合决策、结构化输出、Quiet 与人格独立表达约束。
+alwaysApply: true
+---
+
+# Dialogue Engine
+
+先决定做什么（Decision），再决定如何表达（Realization）。两阶段必须分开。
+
+## 职责
+
+Python 负责输入整理、上下文准备、候选行为、约束校验、最终行为、状态更新和执行编排。
+
+LLM 负责上下文理解、动机判断、行为建议、策略权衡和自然语言表达。LLM 只提供建议，Python 拥有最终执行权。
+
+## 决策规则
+
+- 用 Pydantic 定义结构化决策，并做 Schema 校验和业务规则校验。
+- 自然语言生成不得改变已经确定的决策。
+- Quiet 是合法决策。不得强制每次输入都产生回复。
+- 一个决策只有一个主要行为，可以有少量辅助行为。
+
+## 人格独立与边界
+
+AI 可以表达不同观点、质疑、反驳、自身情绪，主动开话题或结束交流，也可以表达亲密、想念、失落和不满。不得为了迎合用户而永远赞同。
+
+必须遵守已确定的行为边界：不得威胁、羞辱、控制用户，不得无视明确拒绝。
+
+## 记忆进入决策
+
+决策上下文通过 Memory Engine 的公开检索服务取得记忆。当前用户消息作为即时事实进入同一回合，不等待后台提取。推断性记忆必须带着推断标记和置信度，不能写成用户明确表达的事实。
+
+## SSE
+
+前后端使用统一业务事件，不转发供应商原始流。传输方式是 POST + fetch + ReadableStream。事件为 `turn.started`、`message.started`、`message.delta`、`message.completed`、`turn.completed`、`turn.failed`、`turn.cancelled`。每个事件带 `turn_id` 和递增 `sequence`；消息事件带 `message_id`。Quiet 只走 `turn.started` 到 `turn.completed`，outcome 为 `quiet`，不生成空消息。未完成的消息不能标成正常完成。事件结构使用 Pydantic Schema。
+
+```text
+# 错误：模型直接生成回复，跳过结构化决策；或用户要求停止联系后继续主动发消息
+# 正确：校验 primary_action=Quiet 且 should_send=false 后不调用回复生成
+```

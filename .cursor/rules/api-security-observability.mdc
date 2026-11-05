@@ -1,0 +1,28 @@
+---
+description: REST、SSE、统一错误、调用追踪、敏感配置与数据访问授权约束。
+alwaysApply: true
+---
+
+# API
+
+- 普通接口使用 HTTP REST，对话流式输出使用 SSE。
+- 请求和响应定义 Pydantic Schema。异常响应和参数校验保持统一。
+- API 命名和职责清晰。
+- 不把 ORM 对象直接作为响应返回，不暴露不必要的内部数据。
+
+# 可观测性
+
+模型调用日志至少包含 `task_type`、`model_name`、`latency`、`input_tokens`、`output_tokens`、`status`、`error`、`trace_id`。
+
+一次完整交流要能追踪：用户消息接收、上下文加载、Persona / Memory / State 读取、Dialogue 决策、Python 校验、自然语言生成、SSE 输出、后台任务。
+
+禁止在普通日志中输出 API Key、密码等敏感信息。Prompt 和模型输出可能含个人隐私，默认不无限期保存完整内容。
+
+# 安全与配置
+
+- 敏感配置通过环境变量或安全配置管理。禁止把 API Key、数据库密码提交到 Git。
+- `.env.example` 只放变量示例，不放真实密钥。
+- 动态业务配置放在 PostgreSQL，重要配置保留版本。
+- 查询用户数据必须做归属校验。
+- 不得仅凭客户端传入的 `user_id` 或 `companion_id` 认定访问权限。
+- 跨用户访问必须经过服务端授权校验。

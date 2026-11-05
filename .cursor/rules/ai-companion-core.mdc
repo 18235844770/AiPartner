@@ -1,0 +1,47 @@
+---
+description: AI Companion 全局原则、技术选型、模块边界与规则优先级。创建、修改、重构和审查代码时始终生效。
+alwaysApply: true
+---
+
+# AI Companion 核心约束
+
+本项目是具有独立人格、长期记忆、主动交流和情绪互动能力的 AI 陪伴系统。实现必须以已确认的产品设计、技术架构和数据库设计为依据。
+
+## 原则
+
+1. 遵守已有架构，不得擅自改变技术选型。
+2. 保持模块边界，不得为了减少代码量破坏分层。
+3. 优先保证数据一致性、可靠性和可维护性。
+4. 避免过度设计，不提前实现没有实际需求的功能。
+5. 不得简化已经明确的业务规则。
+6. 不得假设未确定的需求；先核对现有文档和代码。
+7. 新功能必须考虑与现有模块的兼容性。
+
+## 技术选型（未经明确批准不得替换）
+
+- 桌面端：Electron、Vue 3、TypeScript、Vite、pnpm
+- 后端：Python、FastAPI、SQLAlchemy 2.x、Pydantic v2、Alembic、uv
+- 数据：PostgreSQL、pgvector、Redis、ARQ、Docker Compose
+- 模型：第一阶段仅 DeepSeek。所有调用经过 Model Adapter。业务模块不得直接调用模型 SDK。
+
+## 架构
+
+- Monorepo、模块化单体、前后端分离。
+- Electron 桌面端 + 独立 FastAPI 进程。
+- Python 负责业务控制，LLM 负责认知判断和自然语言表达。
+- 模块：Persona、Memory、Dialogue、State、Model Adapter。
+
+模块之间只允许公开 Service 同步调用，以及事件、后台任务异步通信。禁止访问其他模块的 Repository，禁止直接修改其他模块的数据，禁止绕过模块接口操作其他模块的实体。
+
+依赖方向：API → Service → Repository。Domain 定义实体、规则和类型。Shared 只提供基础设施。禁止反向依赖。禁止把业务逻辑写入 API、Repository 或数据库模型。
+
+## 规则优先级
+
+1. 用户当前明确提出的需求
+2. 已确认的产品设计决议
+3. 已确认的技术架构决议
+4. 本项目 Cursor 规则
+5. 当前代码中的既有实现
+6. AI 自行选择的实现方式
+
+代码与已确定架构冲突时，先识别并修正架构偏差，不模仿错误实现。现有架构无法满足需求时，先说明问题、原因和方案，不得自行推翻已有设计。

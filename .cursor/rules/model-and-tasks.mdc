@@ -1,0 +1,46 @@
+---
+description: Model Adapter 统一模型调用，以及 Redis、ARQ、幂等和 Outbox 后台任务约束。
+alwaysApply: true
+---
+
+# Model Adapter
+
+所有 LLM 和 Embedding 调用必须经过 Model Adapter。
+
+禁止：
+
+- 业务 Service 直接调用 DeepSeek SDK。
+- 业务模块硬编码模型名称。
+- 业务代码硬编码 API Key。
+- 把供应商专有响应格式直接传到业务模块。
+
+Adapter 统一处理模型选择、文本生成、结构化输出、流式生成、Embedding、超时、重试、错误转换、Token 统计和调用日志。
+
+按任务路由，名称和参数必须配置化：
+
+- `conversation_model`
+- `decision_model`
+- `memory_model`
+- `embedding_model`
+
+不得假设模型具备尚未验证的 API 能力。模型失败时不得伪造人格、记忆或情绪变化。
+
+Embedding 与对话模型分开。第一版默认本地 BGE-M3，Provider 为 `local`，维度 1024。不得把 `embedding_model` 配成 DeepSeek，也不得假设 DeepSeek 提供 Embedding。Memory Engine 不得直接调用 Embedding SDK。不同模型的向量不能混在一起比较；换模型时要为对应版本重新生成向量。Embedding 失败只把该向量标为失败并可重试，不能让记忆保存失败。
+
+# 后台任务
+
+使用 Redis + ARQ。FastAPI 与 Worker 独立运行。
+
+- 记忆处理和 Embedding 不得阻塞当前对话。
+- 任务必须幂等，支持失败重试，记录重试次数、最终状态和可追踪错误。
+- PostgreSQL 是正式任务记录和业务数据的来源。Redis 只做调度和运行时辅助。
+- 重要任务使用 Outbox，避免数据库写入成功但任务没有投递。
+
+```python
+# 错误
+from openai import OpenAI
+OpenAI().chat.completions.create(model="deepseek-chat", ...)
+
+# 正确
+await model_adapter.complete_text(task="conversation_model", ...)
+```
