@@ -12,9 +12,10 @@ alwaysApply: true
 必须区分：
 
 - Conversation Log：原始对话记录，不是一种 Memory 类型。
-- Working Memory：工作记忆。
+- Working Memory：工作记忆。按会话放在 `working_memories`，不进入记忆生命周期，也不生成 Embedding。
 - Semantic Memory：语义记忆。
 - Episodic Memory：情景记忆。
+- Attention Topic：长期关注主题。放在 `attention_topics`，用 `attention_topic_memories` 关联证据记忆。人格初始兴趣留在人格版本中。
 
 ## 生命周期
 

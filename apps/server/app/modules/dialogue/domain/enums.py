@@ -9,7 +9,7 @@ class TriggerType(StrEnum):
 
 
 class DialogueAction(StrEnum):
-    """产品方案第四节的基础行为。数据库稿里的 comfort、analyze 等未纳入该集合。"""
+    """交流主行为与辅助行为：respond、share、ask、react、continue、close、quiet。"""
 
     RESPOND = "respond"
     SHARE = "share"

@@ -1,7 +1,8 @@
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.infrastructure.api.schemas import (
     AddModelConfigVersionRequest,
@@ -12,14 +13,20 @@ from app.modules.infrastructure.api.schemas import (
 from app.modules.infrastructure.domain.enums import CONFIG_TASK_TYPES, ModelConfigKey, ModelProvider, ModelTaskType
 from app.modules.infrastructure.repositories.infrastructure_repository import ModelConfigRepository
 from app.modules.infrastructure.repositories.models import ModelConfig
+from app.shared.database.session import get_session_factory
 from app.shared.exceptions.errors import ConflictError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
 
 class ModelConfigService:
-    def __init__(self, configs: ModelConfigRepository | None = None) -> None:
+    def __init__(
+        self,
+        configs: ModelConfigRepository | None = None,
+        session_factory: async_sessionmaker[AsyncSession] | None = None,
+    ) -> None:
         self._configs = configs or ModelConfigRepository()
+        self._session_factory = session_factory or get_session_factory()
 
     async def create(self, session: AsyncSession, data: CreateModelConfigRequest) -> ModelConfig:
         async with session.begin():
@@ -74,6 +81,20 @@ class ModelConfigService:
         logger.info("rolled back model config %s to version %s", config_key.value, target.version)
         return target
 
+    async def ensure_local_embedding(self, model_name: str) -> ModelConfig:
+        """没有 Embedding 配置时补一条本地默认配置。已有配置保持不变，并先提交，供适配器读取。"""
+        try:
+            created = await self._insert_local_embedding(model_name)
+        except IntegrityError:
+            logger.info("local embedding config was created concurrently")
+            created = None
+        if created is not None:
+            return created
+        current = await self._read_embedding_config()
+        if current is None:
+            raise NotFoundError("模型配置不存在")
+        return current
+
     async def list_configs(self, session: AsyncSession) -> list[ModelConfig]:
         async with session.begin():
             return await self._configs.list_all(session)
@@ -88,6 +109,35 @@ class ModelConfigService:
         current.updated_at = config.updated_at
         await session.flush()
 
+    async def _insert_local_embedding(self, model_name: str) -> ModelConfig | None:
+        async with self._session_factory() as session:
+            async with session.begin():
+                current = await self._configs.get_default(session, ModelTaskType.EMBEDDING.value)
+                if current is not None:
+                    return current
+                existing = await self._configs.lock_latest(session, ModelConfigKey.EMBEDDING.value)
+                if existing is not None:
+                    return existing
+                now = datetime.now(UTC)
+                data = CreateModelConfigRequest(
+                    config_key=ModelConfigKey.EMBEDDING,
+                    model_name=model_name,
+                    is_enabled=True,
+                    is_default=True,
+                )
+                config = self._new_row(ModelConfigKey.EMBEDDING, data, version=1, now=now)
+                await self._replace_default(session, config)
+                await self._configs.add(session, config)
+                return config
+
+    async def _read_embedding_config(self) -> ModelConfig | None:
+        async with self._session_factory() as session:
+            async with session.begin():
+                current = await self._configs.get_default(session, ModelTaskType.EMBEDDING.value)
+                if current is not None:
+                    return current
+                return await self._configs.lock_latest(session, ModelConfigKey.EMBEDDING.value)
+
     def _new_row(
         self,
         config_key: ModelConfigKey,
@@ -97,7 +147,11 @@ class ModelConfigService:
     ) -> ModelConfig:
         return ModelConfig(
             config_key=config_key.value,
-            provider=ModelProvider.DEEPSEEK.value,
+            provider=(
+                ModelProvider.LOCAL.value
+                if config_key == ModelConfigKey.EMBEDDING
+                else ModelProvider.DEEPSEEK.value
+            ),
             model_name=data.model_name,
             task_type=CONFIG_TASK_TYPES[config_key].value,
             parameters=data.parameters,

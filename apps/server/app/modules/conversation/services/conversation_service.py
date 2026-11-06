@@ -5,7 +5,13 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.conversation.api.schemas import CreateConversationRequest, CreateMessageRequest
-from app.modules.conversation.domain.enums import MESSAGE_STATUS_RECORDED, ContentType, ConversationStatus
+from app.modules.conversation.domain.enums import (
+    MESSAGE_STATUS_RECORDED,
+    ContentType,
+    ConversationStatus,
+    MessageStatus,
+    SenderType,
+)
 from app.modules.conversation.repositories.conversation_repository import ConversationRepository
 from app.modules.conversation.repositories.message_repository import MessageRepository
 from app.modules.conversation.repositories.models import Conversation, Message
@@ -60,9 +66,19 @@ class ConversationService:
         user_id: uuid.UUID,
         companion_id: uuid.UUID,
     ) -> list[Conversation]:
+        if session.in_transaction():
+            return await self._list_conversations(session, user_id, companion_id)
         async with session.begin():
-            await self._identity.get_owned_companion(session, user_id, companion_id)
-            return await self._conversations.list_for_scope(session, user_id, companion_id)
+            return await self._list_conversations(session, user_id, companion_id)
+
+    async def _list_conversations(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+    ) -> list[Conversation]:
+        await self._identity.get_owned_companion(session, user_id, companion_id)
+        return await self._conversations.list_for_scope(session, user_id, companion_id)
 
     async def archive_conversation(
         self,
@@ -97,6 +113,41 @@ class ConversationService:
         logger.info("recorded message %s in conversation %s", result.message.id, conversation_id)
         return result
 
+    async def record_turn_message(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        *,
+        message_id: uuid.UUID,
+        content: str,
+        status: MessageStatus,
+    ) -> Message:
+        data = CreateMessageRequest(sender_type=SenderType.COMPANION, content=content)
+        if session.in_transaction():
+            result = await self._append_message(
+                session,
+                user_id,
+                companion_id,
+                conversation_id,
+                data,
+                message_id=message_id,
+                status=status.value,
+            )
+        else:
+            async with session.begin():
+                result = await self._append_message(
+                    session,
+                    user_id,
+                    companion_id,
+                    conversation_id,
+                    data,
+                    message_id=message_id,
+                    status=status.value,
+                )
+        return result.message
+
     async def _append_message(
         self,
         session: AsyncSession,
@@ -104,6 +155,9 @@ class ConversationService:
         companion_id: uuid.UUID,
         conversation_id: uuid.UUID,
         data: CreateMessageRequest,
+        *,
+        message_id: uuid.UUID | None = None,
+        status: str = MESSAGE_STATUS_RECORDED,
     ) -> AppendMessageResult:
         conversation = await self._require_conversation(
             session,
@@ -128,13 +182,14 @@ class ConversationService:
         message = await self._messages.add(
             session,
             Message(
+                id=message_id if message_id is not None else uuid.uuid4(),
                 conversation_id=conversation.id,
                 sequence_number=sequence_number,
                 client_message_id=data.client_message_id,
                 sender_type=data.sender_type.value,
                 content_type=ContentType.TEXT.value,
                 content=data.content,
-                status=MESSAGE_STATUS_RECORDED,
+                status=status,
                 metadata_=data.metadata.model_dump(),
             ),
         )
@@ -184,9 +239,20 @@ class ConversationService:
         companion_id: uuid.UUID,
         conversation_id: uuid.UUID,
     ) -> list[Message]:
+        if session.in_transaction():
+            return await self._list_messages(session, user_id, companion_id, conversation_id)
         async with session.begin():
-            conversation = await self._require_conversation(session, user_id, companion_id, conversation_id)
-            return await self._messages.list_for_conversation(session, conversation.id)
+            return await self._list_messages(session, user_id, companion_id, conversation_id)
+
+    async def _list_messages(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> list[Message]:
+        conversation = await self._require_conversation(session, user_id, companion_id, conversation_id)
+        return await self._messages.list_for_conversation(session, conversation.id)
 
     async def _require_conversation(
         self,

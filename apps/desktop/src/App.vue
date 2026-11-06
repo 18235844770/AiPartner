@@ -2,8 +2,10 @@
 import { computed, ref, watch } from "vue";
 
 import ChatPanel from "./components/ChatPanel.vue";
+import DebugPanel from "./components/DebugPanel.vue";
 import StatusPanel from "./components/StatusPanel.vue";
 import WorkspaceSetup from "./components/WorkspaceSetup.vue";
+import type { DebugSection } from "./composables/useInspection";
 import { useServiceStatus } from "./composables/useServiceStatus";
 import { useWorkspace, type CompanionDraft, type IdentityDraft } from "./composables/useWorkspace";
 
@@ -22,7 +24,20 @@ const {
   forget,
 } = useWorkspace();
 
-const view = ref<"chat" | "status">("chat");
+const view = ref<"chat" | DebugSection | "status">("chat");
+
+const debugSection = computed(() => {
+  if (
+    view.value === "persona" ||
+    view.value === "memory" ||
+    view.value === "state" ||
+    view.value === "decisions" ||
+    view.value === "models"
+  ) {
+    return view.value;
+  }
+  return null;
+});
 const companionName = ref("");
 const companionDescription = ref("");
 const companionIsDefault = ref(false);
@@ -96,6 +111,11 @@ function retryWorkspace(): void {
 
       <nav class="nav" aria-label="调试台">
         <button type="button" :class="{ active: view === 'chat' }" @click="view = 'chat'">会话</button>
+        <button type="button" :class="{ active: view === 'persona' }" @click="view = 'persona'">人格</button>
+        <button type="button" :class="{ active: view === 'memory' }" @click="view = 'memory'">记忆</button>
+        <button type="button" :class="{ active: view === 'state' }" @click="view = 'state'">状态</button>
+        <button type="button" :class="{ active: view === 'decisions' }" @click="view = 'decisions'">决策</button>
+        <button type="button" :class="{ active: view === 'models' }" @click="view = 'models'">模型</button>
         <button type="button" :class="{ active: view === 'status' }" @click="view = 'status'">系统</button>
       </nav>
 
@@ -149,6 +169,13 @@ function retryWorkspace(): void {
         :busy="busy"
         :error="workspaceError"
         @submit="submitIdentity"
+      />
+      <DebugPanel
+        v-else-if="debugSection && companion && apiBaseUrl"
+        :api-base-url="apiBaseUrl"
+        :user-id="user?.id ?? ''"
+        :companion-id="companion.id"
+        :section="debugSection"
       />
       <ChatPanel
         v-else-if="companion && apiBaseUrl"

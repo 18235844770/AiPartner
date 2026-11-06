@@ -23,6 +23,14 @@ function isErrorBody(value: unknown): value is ErrorBody {
   return typeof record.code === "string" && typeof record.message === "string";
 }
 
+export async function errorFromResponse(response: Response): Promise<ApiError> {
+  const body: unknown = await response.json().catch(() => null);
+  if (isErrorBody(body)) {
+    return new ApiError(body.message, response.status, body.code);
+  }
+  return new ApiError(`请求失败：${response.status}`, response.status, "http_error");
+}
+
 export async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -39,11 +47,7 @@ export async function requestJson<T>(url: string, init?: RequestInit): Promise<T
   }
 
   if (!response.ok) {
-    const body: unknown = await response.json().catch(() => null);
-    if (isErrorBody(body)) {
-      throw new ApiError(body.message, response.status, body.code);
-    }
-    throw new ApiError(`请求失败：${response.status}`, response.status, "http_error");
+    throw await errorFromResponse(response);
   }
 
   return (await response.json()) as T;

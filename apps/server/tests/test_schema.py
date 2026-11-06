@@ -26,6 +26,9 @@ def test_core_tables_are_registered() -> None:
         "memory_sources",
         "memory_relations",
         "memory_embeddings",
+        "working_memories",
+        "attention_topics",
+        "attention_topic_memories",
         "companion_states",
         "state_events",
         "dialogue_decisions",
@@ -89,7 +92,7 @@ def test_persona_keeps_version_ownership_constraints() -> None:
     assert "version_number >= 1" in sql
 
 
-def test_memory_indexes_and_unbounded_embedding_match_the_design() -> None:
+def test_memory_indexes_and_embedding_dimension_match_the_design() -> None:
     index_names = {index.name for index in Memory.__table__.indexes}
     assert index_names == {
         "ix_memories_companion_status",
@@ -98,9 +101,11 @@ def test_memory_indexes_and_unbounded_embedding_match_the_design() -> None:
         "ix_memories_companion_importance",
         "ix_memories_companion_updated_at",
     }
-    assert MemoryEmbedding.__table__.c.embedding.type.dim is None
+    assert MemoryEmbedding.__table__.c.embedding.type.dim == 1024
     migration = Path("alembic/versions/0003_memory.py").read_text(encoding="utf-8")
     assert re.search(r"vector\(\s*\d+", migration, re.IGNORECASE) is None
+    locked = Path("alembic/versions/0009_local_embedding.py").read_text(encoding="utf-8")
+    assert "vector(1024)" in locked
 
 
 def test_state_version_lock_and_event_index_match_the_design() -> None:

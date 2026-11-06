@@ -18,6 +18,8 @@ from app.shared.exceptions.errors import AppError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
+RECENT_CALL_LIMIT = 50
+
 
 class ModelCallLogService:
     def __init__(
@@ -61,6 +63,26 @@ class ModelCallLogService:
             await self._logs.add(session, log)
         logger.info("recorded model call %s status %s", log.id, log.status)
         return log
+
+    async def list_for_companion(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+    ) -> list[ModelCallLog]:
+        if session.in_transaction():
+            return await self._list_for_companion(session, user_id, companion_id)
+        async with session.begin():
+            return await self._list_for_companion(session, user_id, companion_id)
+
+    async def _list_for_companion(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+    ) -> list[ModelCallLog]:
+        await self._identity.get_owned_companion(session, user_id, companion_id)
+        return await self._logs.list_recent_by_companion(session, companion_id, RECENT_CALL_LIMIT)
 
     async def list_by_trace(self, session: AsyncSession, trace_id: uuid.UUID) -> list[ModelCallLog]:
         async with session.begin():

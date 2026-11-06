@@ -24,7 +24,12 @@ export class PythonServiceManager {
   }
 
   start(): void {
-    const serverRoot = path.resolve(__dirname, "../../server");
+    const serverRoot = path.resolve(__dirname, "../../../server");
+    if (!fs.existsSync(path.join(serverRoot, "pyproject.toml"))) {
+      this.state = "failed";
+      this.detail = `找不到 Python 服务目录 ${serverRoot}`;
+      return;
+    }
     this.child = spawn(
       resolveUv(),
       ["run", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(this.port)],

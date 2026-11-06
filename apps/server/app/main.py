@@ -11,7 +11,8 @@ from app.modules.conversation.api.router import router as conversation_router
 from app.modules.dialogue.api.router import router as dialogue_router
 from app.modules.dialogue.api.turn_router import router as turn_router
 from app.modules.identity.api.router import router as identity_router
-from app.modules.infrastructure.api.router import config_router, log_router, task_router
+from app.modules.infrastructure.api.router import config_router, log_router, scope_router, task_router
+from app.modules.memory.api.context_router import router as memory_context_router
 from app.modules.memory.api.router import router as memory_router
 from app.modules.persona.api.router import router as persona_router
 from app.modules.state.api.router import router as state_router
@@ -41,12 +42,14 @@ def create_app() -> FastAPI:
     app.include_router(conversation_router, prefix="/api")
     app.include_router(persona_router, prefix="/api")
     app.include_router(memory_router, prefix="/api")
+    app.include_router(memory_context_router, prefix="/api")
     app.include_router(state_router, prefix="/api")
     app.include_router(dialogue_router, prefix="/api")
     app.include_router(turn_router, prefix="/api")
     app.include_router(config_router, prefix="/api")
     app.include_router(log_router, prefix="/api")
     app.include_router(task_router, prefix="/api")
+    app.include_router(scope_router, prefix="/api")
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:

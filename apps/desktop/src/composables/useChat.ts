@@ -2,7 +2,6 @@ import { computed, ref, watch } from "vue";
 
 import { compareConversations } from "../domain/presentation";
 import {
-  appendMessage,
   archiveConversation,
   createConversation,
   listConversations,
@@ -12,6 +11,7 @@ import {
   type MessageResponse,
 } from "../services/conversations";
 import { errorText } from "../services/http";
+import { streamUserTurn, type TurnEvent } from "../services/turns";
 
 export function useChat(getScope: () => ConversationScope | null) {
   const conversations = ref<ConversationResponse[]>([]);
@@ -24,7 +24,7 @@ export function useChat(getScope: () => ConversationScope | null) {
   const error = ref("");
   let scopeGeneration = 0;
   let messageLoad = 0;
-  let pendingSend: { conversationId: string; content: string; clientMessageId: string } | null = null;
+  let turnAbort: AbortController | null = null;
 
   const selected = computed(
     () => conversations.value.find((item) => item.id === selectedId.value) ?? null,
@@ -133,50 +133,138 @@ export function useChat(getScope: () => ConversationScope | null) {
     if (!scope || !conversation || !trimmed || sending.value) {
       return false;
     }
-    if (
-      pendingSend?.conversationId !== conversation.id ||
-      pendingSend.content !== trimmed
-    ) {
-      pendingSend = {
-        conversationId: conversation.id,
-        content: trimmed,
-        clientMessageId: crypto.randomUUID(),
-      };
-    }
+    const clientMessageId = crypto.randomUUID();
     const generation = scopeGeneration;
+    const controller = new AbortController();
+    turnAbort = controller;
     sending.value = true;
     error.value = "";
-    try {
-      const message = await appendMessage(scope, conversation.id, {
+    let outcome = "";
+    messages.value = [
+      ...messages.value,
+      {
+        id: clientMessageId,
+        conversation_id: conversation.id,
+        sequence_number: conversation.next_sequence_number,
+        client_message_id: clientMessageId,
         sender_type: "user",
+        content_type: "text",
         content: trimmed,
-        client_message_id: pendingSend.clientMessageId,
+        status: "recorded",
+        metadata: {},
+        created_at: new Date().toISOString(),
+      },
+    ];
+    try {
+      await streamUserTurn(scope, conversation.id, trimmed, clientMessageId, controller.signal, (event) => {
+        if (generation !== scopeGeneration) {
+          return;
+        }
+        outcome = applyTurnEvent(conversation.id, event, outcome);
       });
-      if (generation !== scopeGeneration) {
-        return false;
+      const turnError = error.value;
+      if (generation === scopeGeneration) {
+        await openConversation(conversation.id);
+        if (turnError) {
+          error.value = turnError;
+        }
       }
-      pendingSend = null;
-      if (!messages.value.some((item) => item.id === message.id)) {
-        messages.value = [...messages.value, message].sort(
-          (left, right) => left.sequence_number - right.sequence_number,
-        );
-        replaceConversation({
-          ...conversation,
-          last_message_at: message.created_at,
-          next_sequence_number: conversation.next_sequence_number + 1,
-        });
-      }
-      return true;
+      return outcome === "replied" || outcome === "quiet";
     } catch (caught) {
       if (generation === scopeGeneration) {
-        error.value = errorText(caught);
+        const message = isAbortError(caught) ? "已停止" : errorText(caught);
+        await openConversation(conversation.id);
+        error.value = message;
       }
       return false;
     } finally {
+      if (turnAbort === controller) {
+        turnAbort = null;
+      }
       if (generation === scopeGeneration) {
         sending.value = false;
       }
     }
+  }
+
+  function stop(): void {
+    turnAbort?.abort();
+  }
+
+  function applyTurnEvent(conversationId: string, event: TurnEvent, current: string): string {
+    if (event.event === "message.started") {
+      const messageId = textValue(event.data.message_id);
+      if (messageId) {
+        upsertCompanion(conversationId, messageId, "", "generating");
+      }
+      return current;
+    }
+    if (event.event === "message.delta") {
+      const messageId = textValue(event.data.message_id);
+      const delta = textValue(event.data.delta);
+      if (messageId && delta) {
+        const existing = messages.value.find((item) => item.id === messageId);
+        upsertCompanion(conversationId, messageId, `${existing?.content ?? ""}${delta}`, "generating");
+      }
+      return current;
+    }
+    if (event.event === "message.completed") {
+      const messageId = textValue(event.data.message_id);
+      if (messageId) {
+        messages.value = messages.value.map((item) =>
+          item.id === messageId ? { ...item, status: "completed" } : item,
+        );
+      }
+      return current;
+    }
+    if (event.event === "turn.completed") {
+      return textValue(event.data.outcome) || current;
+    }
+    if (event.event === "turn.failed") {
+      const message = errorMessage(event.data.error);
+      error.value = message;
+      const messageId = textValue(event.data.message_id);
+      if (messageId) {
+        messages.value = messages.value.map((item) =>
+          item.id === messageId ? { ...item, status: "failed" } : item,
+        );
+      } else {
+        messages.value = messages.value.map((item) =>
+          item.sender_type === "companion" && item.status === "generating" ? { ...item, status: "failed" } : item,
+        );
+      }
+      return "failed";
+    }
+    if (event.event === "turn.cancelled") {
+      error.value = "已停止";
+      return "cancelled";
+    }
+    return current;
+  }
+
+  function upsertCompanion(conversationId: string, messageId: string, content: string, status: string): void {
+    const existing = messages.value.find((item) => item.id === messageId);
+    if (existing) {
+      messages.value = messages.value.map((item) =>
+        item.id === messageId ? { ...item, content, status } : item,
+      );
+      return;
+    }
+    messages.value = [
+      ...messages.value,
+      {
+        id: messageId,
+        conversation_id: conversationId,
+        sequence_number: Number.MAX_SAFE_INTEGER,
+        client_message_id: null,
+        sender_type: "companion",
+        content_type: "text",
+        content,
+        status,
+        metadata: {},
+        created_at: new Date().toISOString(),
+      },
+    ];
   }
 
   async function archiveSelected(): Promise<void> {
@@ -201,7 +289,8 @@ export function useChat(getScope: () => ConversationScope | null) {
     },
     (key) => {
       scopeGeneration += 1;
-      pendingSend = null;
+      turnAbort?.abort();
+      turnAbort = null;
       loadingList.value = false;
       loadingMessages.value = false;
       creating.value = false;
@@ -229,7 +318,24 @@ export function useChat(getScope: () => ConversationScope | null) {
     openConversation,
     startConversation,
     sendMessage,
+    stop,
     archiveSelected,
     refreshConversations,
   };
+}
+
+function textValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function errorMessage(value: unknown): string {
+  if (typeof value !== "object" || value === null) {
+    return "这次交流没有完成";
+  }
+  const message = (value as { message?: unknown }).message;
+  return typeof message === "string" && message ? message : "这次交流没有完成";
+}
+
+function isAbortError(caught: unknown): boolean {
+  return caught instanceof DOMException && caught.name === "AbortError";
 }

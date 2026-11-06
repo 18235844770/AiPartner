@@ -83,6 +83,16 @@ class StateService:
             await self._identity.get_owned_companion(session, user_id, companion_id)
             return await self._require(session, companion_id)
 
+    async def list_active_owners(
+        self,
+        session: AsyncSession,
+        limit: int,
+    ) -> list[tuple[uuid.UUID, uuid.UUID]]:
+        if session.in_transaction():
+            return await self._states.list_active_owners(session, limit)
+        async with session.begin():
+            return await self._states.list_active_owners(session, limit)
+
     async def list_events(
         self,
         session: AsyncSession,
@@ -101,38 +111,51 @@ class StateService:
         companion_id: uuid.UUID,
         data: ApplyStateChangeRequest,
     ) -> CompanionState:
-        async with session.begin():
-            await self._identity.get_owned_companion(session, user_id, companion_id)
-            state = await self._states.get_for_update(session, companion_id)
-            if state is None:
-                raise NotFoundError("状态不存在")
-            if state.version != data.expected_version:
-                raise ConflictError("状态版本不匹配")
-            conversation_id, message_id = await self._linked_sources(session, user_id, companion_id, data)
-            now = datetime.now(UTC)
-            changes = self._collect_changes(state, data, now)
-            if not changes:
-                raise AppError("状态没有变化")
-            version_before = state.version
-            state.version = version_before + 1
-            state.updated_at = now
-            await self._states.add_event(
-                session,
-                StateEvent(
-                    companion_id=companion_id,
-                    event_type=event_type_for(list(changes)).value,
-                    source_type=data.source_type.value,
-                    conversation_id=conversation_id,
-                    message_id=message_id,
-                    dialogue_decision_id=data.dialogue_decision_id,
-                    version_before=version_before,
-                    version_after=state.version,
-                    changes=changes,
-                    reason=data.reason,
-                    created_at=now,
-                ),
-            )
+        if session.in_transaction():
+            state = await self._apply_change(session, user_id, companion_id, data)
+        else:
+            async with session.begin():
+                state = await self._apply_change(session, user_id, companion_id, data)
         logger.info("updated state %s to version %s", state.id, state.version)
+        return state
+
+    async def _apply_change(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        data: ApplyStateChangeRequest,
+    ) -> CompanionState:
+        await self._identity.get_owned_companion(session, user_id, companion_id)
+        state = await self._states.get_for_update(session, companion_id)
+        if state is None:
+            raise NotFoundError("状态不存在")
+        if state.version != data.expected_version:
+            raise ConflictError("状态版本不匹配")
+        conversation_id, message_id = await self._linked_sources(session, user_id, companion_id, data)
+        now = datetime.now(UTC)
+        changes = self._collect_changes(state, data, now)
+        if not changes:
+            raise AppError("状态没有变化")
+        version_before = state.version
+        state.version = version_before + 1
+        state.updated_at = now
+        await self._states.add_event(
+            session,
+            StateEvent(
+                companion_id=companion_id,
+                event_type=event_type_for(list(changes)).value,
+                source_type=data.source_type.value,
+                conversation_id=conversation_id,
+                message_id=message_id,
+                dialogue_decision_id=data.dialogue_decision_id,
+                version_before=version_before,
+                version_after=state.version,
+                changes=changes,
+                reason=data.reason,
+                created_at=now,
+            ),
+        )
         return state
 
     async def _require(self, session: AsyncSession, companion_id: uuid.UUID) -> CompanionState:

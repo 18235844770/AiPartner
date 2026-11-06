@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_timeout_seconds: float = Field(default=60, gt=0)
     deepseek_max_retries: int = Field(default=1, ge=0)
+    embedding_model_name: str = Field(default="BAAI/bge-m3", min_length=1, max_length=64)
 
 
 @lru_cache

@@ -42,6 +42,8 @@ def test_evaluation_prompt_names_memories_without_relationship_scores() -> None:
         [{"id": "11111111-1111-4111-8111-111111111111", "category": "preference", "content": "用户喜欢喝茶"}],
     )
     assert "正式记忆" in messages[0].content
+    assert "不要增加其他字段" in messages[0].content
+    assert "memory_id" in messages[0].content
     assert "11111111-1111-4111-8111-111111111111" in messages[1].content
     assert "closeness" not in messages[1].content
 

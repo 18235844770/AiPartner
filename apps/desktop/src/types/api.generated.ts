@@ -248,6 +248,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/{user_id}/companions/{companion_id}/conversations/{conversation_id}/working-memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Working Memory */
+        get: operations["get_working_memory_api_users__user_id__companions__companion_id__conversations__conversation_id__working_memory_get"];
+        /** Save Working Memory */
+        put: operations["save_working_memory_api_users__user_id__companions__companion_id__conversations__conversation_id__working_memory_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/companions/{companion_id}/attention-topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Attention Topics */
+        get: operations["list_attention_topics_api_users__user_id__companions__companion_id__attention_topics_get"];
+        put?: never;
+        /** Create Attention Topic */
+        post: operations["create_attention_topic_api_users__user_id__companions__companion_id__attention_topics_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/companions/{companion_id}/attention-topics/{topic_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Attention Status */
+        post: operations["update_attention_status_api_users__user_id__companions__companion_id__attention_topics__topic_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/companions/{companion_id}/attention-topics/{topic_id}/memories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Attention Memory */
+        post: operations["link_attention_memory_api_users__user_id__companions__companion_id__attention_topics__topic_id__memories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/{user_id}/companions/{companion_id}/state": {
         parameters: {
             query?: never;
@@ -507,6 +577,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/{user_id}/companions/{companion_id}/model-call-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Companion Model Calls */
+        get: operations["list_companion_model_calls_api_users__user_id__companions__companion_id__model_call_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/companions/{companion_id}/background-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Companion Background Tasks */
+        get: operations["list_companion_background_tasks_api_users__user_id__companions__companion_id__background_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -564,6 +668,55 @@ export interface components {
             relationship?: components["schemas"]["RelationshipState"] | null;
             interaction?: components["schemas"]["InteractionState"] | null;
             motivation?: components["schemas"]["MotivationState"] | null;
+        };
+        /**
+         * AttentionOrigin
+         * @enum {string}
+         */
+        AttentionOrigin: "user_related" | "persona_autonomous";
+        /**
+         * AttentionStatus
+         * @enum {string}
+         */
+        AttentionStatus: "active" | "paused" | "completed" | "archived";
+        /** AttentionTopicResponse */
+        AttentionTopicResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Companion Id
+             * Format: uuid
+             */
+            companion_id: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Origin Type */
+            origin_type: string;
+            /** Status */
+            status: string;
+            /** Interest Score */
+            interest_score: string;
+            /** Last Discussed At */
+            last_discussed_at: string | null;
+            /** Next Review At */
+            next_review_at: string | null;
+            /** Memory Ids */
+            memory_ids: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** BackgroundTaskResponse */
         BackgroundTaskResponse: {
@@ -705,6 +858,21 @@ export interface components {
             updated_at: string;
             /** Archived At */
             archived_at: string | null;
+        };
+        /** CreateAttentionTopicRequest */
+        CreateAttentionTopicRequest: {
+            /** Title */
+            title: string;
+            /** Description */
+            description?: string | null;
+            origin_type: components["schemas"]["AttentionOrigin"];
+            /**
+             * Interest Score
+             * @default 0.500
+             */
+            interest_score: number | string;
+            /** Next Review At */
+            next_review_at?: string | null;
         };
         /** CreateBackgroundTaskRequest */
         CreateBackgroundTaskRequest: {
@@ -926,7 +1094,7 @@ export interface components {
         };
         /**
          * DialogueAction
-         * @description 产品方案第四节的基础行为。数据库稿里的 comfort、analyze 等未纳入该集合。
+         * @description 交流主行为与辅助行为：respond、share、ask、react、continue、close、quiet。
          * @enum {string}
          */
         DialogueAction: "respond" | "share" | "ask" | "react" | "continue" | "close" | "quiet";
@@ -1029,6 +1197,14 @@ export interface components {
             consecutive_unanswered_messages: number;
             /** Quiet Until */
             quiet_until?: string | null;
+        };
+        /** LinkAttentionMemoryRequest */
+        LinkAttentionMemoryRequest: {
+            /**
+             * Memory Id
+             * Format: uuid
+             */
+            memory_id: string;
         };
         /**
          * MbtiType
@@ -1329,7 +1505,7 @@ export interface components {
          * ModelProvider
          * @enum {string}
          */
-        ModelProvider: "deepseek";
+        ModelProvider: "deepseek" | "local";
         /**
          * ModelTaskType
          * @enum {string}
@@ -1352,6 +1528,20 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** OpenThreadInput */
+        OpenThreadInput: {
+            /** Title */
+            title: string;
+            /** @default open */
+            status: components["schemas"]["OpenThreadStatus"];
+            /** Message Id */
+            message_id?: string | null;
+        };
+        /**
+         * OpenThreadStatus
+         * @enum {string}
+         */
+        OpenThreadStatus: "open" | "closed";
         /** PersonaResponse */
         PersonaResponse: {
             /**
@@ -1525,6 +1715,26 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** SaveWorkingMemoryRequest */
+        SaveWorkingMemoryRequest: {
+            /** Summary */
+            summary?: string | null;
+            /** Current Topic */
+            current_topic?: string | null;
+            /** Attention Topic Id */
+            attention_topic_id?: string | null;
+            /** Open Threads */
+            open_threads?: components["schemas"]["OpenThreadInput"][];
+            /** Expires At */
+            expires_at?: string | null;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /** Version */
+            version?: number | null;
+        };
         /**
          * SenderType
          * @enum {string}
@@ -1622,13 +1832,9 @@ export interface components {
          * @enum {string}
          */
         TriggerType: "user_message" | "proactive" | "system_event" | "background";
-        /** TurnResponse */
-        TurnResponse: {
-            /** User Message Id */
-            user_message_id: string | null;
-            /** Companion Message Id */
-            companion_message_id: string | null;
-            decision: components["schemas"]["DecisionResponse"];
+        /** UpdateAttentionStatusRequest */
+        UpdateAttentionStatusRequest: {
+            status: components["schemas"]["AttentionStatus"];
         };
         /** UpdateCompanionRequest */
         UpdateCompanionRequest: {
@@ -1685,6 +1891,40 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WorkingMemoryResponse */
+        WorkingMemoryResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Companion Id
+             * Format: uuid
+             */
+            companion_id: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Summary */
+            summary: string | null;
+            /** Current Topic */
+            current_topic: string | null;
+            /** Attention Topic Id */
+            attention_topic_id: string | null;
+            /** Open Threads */
+            open_threads: {
+                [key: string]: unknown;
+            }[];
+            /** Expires At */
+            expires_at: string | null;
+            /** Archived At */
+            archived_at: string | null;
+            /** Version */
+            version: number;
         };
     };
     responses: never;
@@ -2379,6 +2619,218 @@ export interface operations {
             };
         };
     };
+    get_working_memory_api_users__user_id__companions__companion_id__conversations__conversation_id__working_memory_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                companion_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkingMemoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_working_memory_api_users__user_id__companions__companion_id__conversations__conversation_id__working_memory_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                companion_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveWorkingMemoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkingMemoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attention_topics_api_users__user_id__companions__companion_id__attention_topics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                companion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionTopicResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_attention_topic_api_users__user_id__companions__companion_id__attention_topics_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                companion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAttentionTopicRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionTopicResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_attention_status_api_users__user_id__companions__companion_id__attention_topics__topic_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                companion_id: string;
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAttentionStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionTopicResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_attention_memory_api_users__user_id__companions__companion_id__attention_topics__topic_id__memories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                companion_id: string;
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkAttentionMemoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionTopicResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_state_api_users__user_id__companions__companion_id__state_get: {
         parameters: {
             query?: never;
@@ -2671,12 +3123,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TurnResponse"];
+                    "text/event-stream": string;
                 };
             };
             /** @description Validation Error */
@@ -2707,12 +3159,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TurnResponse"];
+                    "text/event-stream": string;
                 };
             };
             /** @description Validation Error */
@@ -2999,6 +3451,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BackgroundTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_companion_model_calls_api_users__user_id__companions__companion_id__model_call_logs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                companion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCallLogResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_companion_background_tasks_api_users__user_id__companions__companion_id__background_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                companion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundTaskResponse"][];
                 };
             };
             /** @description Validation Error */

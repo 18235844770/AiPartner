@@ -57,7 +57,8 @@ button:disabled {
 .brand h1,
 .thread-header h2,
 .setup h2,
-.status-page h2 {
+.status-page h2,
+.debug-page h2 {
   margin: 4px 0 0;
   font-size: 28px;
   font-weight: 620;
@@ -318,9 +319,14 @@ button:disabled {
   border-color: #d9f99d;
 }
 
-.bubble.system {
-  align-self: center;
-  background: transparent;
+.bubble.failed,
+.bubble.interrupted {
+  border-style: dashed;
+}
+
+.composer-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .bubble-content {
@@ -392,6 +398,81 @@ button:disabled {
 label {
   display: grid;
   gap: 6px;
+}
+
+.debug-page {
+  max-width: 880px;
+  padding: 32px 40px 48px;
+}
+
+.debug-page h2 {
+  font-size: 28px;
+}
+
+.debug-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.section-label {
+  margin: 28px 0 0;
+  font-size: 14px;
+}
+
+.record-list {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record {
+  padding: 14px 16px;
+  background: #fffdf8;
+  border: 1px solid #e7e5e4;
+  border-radius: 14px;
+}
+
+.record h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.record p,
+.memory-body {
+  margin: 8px 0 0;
+}
+
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 8px 0 0;
+  color: #78716c;
+  font-size: 12px;
+}
+
+.debug-page pre,
+.task-key,
+.thread-items {
+  margin: 8px 0 0;
+  color: #44403c;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.debug-page select {
+  width: 100%;
+  max-width: 360px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: #fffdf8;
+  border: 1px solid #d6d3d1;
+  border-radius: 10px;
 }
 
 @media (max-width: 860px) {

@@ -2,7 +2,10 @@ import uuid
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
+from app.modules.memory.domain.enums import EmbeddingStatus
+from app.modules.memory.repositories.context_repository import ContextRepository
 from app.modules.memory.repositories.models import (
     Memory,
     MemoryEmbedding,
@@ -37,6 +40,71 @@ class MemoryRepository:
         session.add(embedding)
         await session.flush()
         return embedding
+
+    async def get_embedding(
+        self,
+        session: AsyncSession,
+        version_id: uuid.UUID,
+        embedding_model: str,
+    ) -> MemoryEmbedding | None:
+        result = await session.scalars(
+            select(MemoryEmbedding).where(
+                MemoryEmbedding.memory_version_id == version_id,
+                MemoryEmbedding.embedding_model == embedding_model,
+            )
+        )
+        return result.one_or_none()
+
+    async def list_completed_embeddings(
+        self,
+        session: AsyncSession,
+        version_ids: list[uuid.UUID],
+    ) -> list[MemoryEmbedding]:
+        if not version_ids:
+            return []
+        result = await session.scalars(
+            select(MemoryEmbedding).where(
+                MemoryEmbedding.memory_version_id.in_(version_ids),
+                MemoryEmbedding.status == EmbeddingStatus.COMPLETED.value,
+                MemoryEmbedding.embedding.is_not(None),
+            )
+        )
+        return list(result.all())
+
+    async def list_relation_pairs(
+        self,
+        session: AsyncSession,
+        companion_id: uuid.UUID,
+    ) -> list[tuple[uuid.UUID, uuid.UUID]]:
+        source_memory = aliased(Memory)
+        target_memory = aliased(Memory)
+        statement = (
+            select(MemoryRelation.source_memory_id, MemoryRelation.target_memory_id)
+            .join(source_memory, source_memory.id == MemoryRelation.source_memory_id)
+            .join(target_memory, target_memory.id == MemoryRelation.target_memory_id)
+            .where(
+                source_memory.companion_id == companion_id,
+                target_memory.companion_id == companion_id,
+            )
+        )
+        rows = (await session.execute(statement)).all()
+        return [(row[0], row[1]) for row in rows]
+
+    async def find_relation(
+        self,
+        session: AsyncSession,
+        source_id: uuid.UUID,
+        target_id: uuid.UUID,
+        relation_type: str,
+    ) -> MemoryRelation | None:
+        result = await session.scalars(
+            select(MemoryRelation).where(
+                MemoryRelation.source_memory_id == source_id,
+                MemoryRelation.target_memory_id == target_id,
+                MemoryRelation.relation_type == relation_type,
+            )
+        )
+        return result.one_or_none()
 
     async def get(self, session: AsyncSession, memory_id: uuid.UUID) -> Memory | None:
         return await session.get(Memory, memory_id)
@@ -93,6 +161,7 @@ class MemoryRepository:
         return [item for item in result.all() if item is not None]
 
     async def delete_memory_graph(self, session: AsyncSession, memory_id: uuid.UUID) -> None:
+        await ContextRepository().delete_links_for_memory(session, memory_id)
         version_ids = select(MemoryVersion.id).where(MemoryVersion.memory_id == memory_id)
         await session.execute(delete(MemoryEmbedding).where(MemoryEmbedding.memory_version_id.in_(version_ids)))
         await session.execute(

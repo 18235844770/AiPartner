@@ -56,3 +56,20 @@ class EmbeddingStatus(StrEnum):
     PENDING = "pending"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class AttentionOrigin(StrEnum):
+    USER_RELATED = "user_related"
+    PERSONA_AUTONOMOUS = "persona_autonomous"
+
+
+class AttentionStatus(StrEnum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    ARCHIVED = "archived"
+
+
+class OpenThreadStatus(StrEnum):
+    OPEN = "open"
+    CLOSED = "closed"

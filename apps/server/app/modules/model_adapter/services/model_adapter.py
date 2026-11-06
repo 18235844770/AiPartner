@@ -14,6 +14,7 @@ from app.modules.infrastructure.api.schemas import RecordModelCallRequest
 from app.modules.infrastructure.domain.enums import CONFIG_TASK_TYPES, ModelCallStatus, ModelConfigKey, ModelProvider
 from app.modules.infrastructure.repositories.infrastructure_repository import ModelConfigRepository
 from app.modules.infrastructure.services.model_call_log_service import ModelCallLogService
+from app.modules.model_adapter.domain.embedding import EMBEDDING_DIMENSIONS, EmbeddingResult, TextEmbedder
 from app.modules.model_adapter.domain.errors import (
     ModelAdapterError,
     ModelCapabilityError,
@@ -50,6 +51,7 @@ class ModelAdapter:
         configs: ModelConfigRepository | None = None,
         logs: ModelCallLogService | None = None,
         session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] | None = None,
+        embedder: TextEmbedder | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._client = client or DeepSeekHttpClient(
@@ -59,6 +61,7 @@ class ModelAdapter:
         self._configs = configs or ModelConfigRepository()
         self._logs = logs or ModelCallLogService()
         self._session_factory = session_factory or get_session_factory()
+        self._embedder = embedder
 
     async def complete_text(
         self,
@@ -99,7 +102,9 @@ class ModelAdapter:
         try:
             return result_type.model_validate_json(completion.content)
         except ValidationError as exc:
-            raise ModelOutputError("模型输出不符合结构") from exc
+            fields = ", ".join(_invalid_locations(exc))
+            detail = f"模型输出不符合结构: {fields}" if fields else "模型输出不符合结构"
+            raise ModelOutputError(detail) from exc
 
     async def stream_text(
         self,
@@ -168,9 +173,68 @@ class ModelAdapter:
             output_tokens=output_tokens,
         )
 
-    async def embed(self, task: ModelConfigKey, scope: ModelCallScope) -> None:
-        del task, scope
-        raise ModelCapabilityError("DeepSeek 官方接口没有 Embedding，不能生成向量")
+    async def embed(self, task: ModelConfigKey, texts: list[str], scope: ModelCallScope) -> EmbeddingResult:
+        if task != ModelConfigKey.EMBEDDING:
+            raise ModelCapabilityError("这个任务不生成向量")
+        cleaned = [text.strip() for text in texts]
+        if not cleaned or any(not text for text in cleaned):
+            raise ModelOutputError("没有可向量化的文本")
+        config = await self._load_config(task)
+        provider = _provider(config)
+        model_name = str(_config_attr(config, "model_name"))
+        started = time.perf_counter()
+        created_at = datetime.now(UTC)
+        if provider != ModelProvider.LOCAL:
+            await self._log(
+                config,
+                task,
+                scope,
+                status=ModelCallStatus.FAILED,
+                latency_ms=_latency(started),
+                error_code="model_capability",
+                error_message="Embedding 使用本地模型，不能调用 DeepSeek",
+                created_at=created_at,
+            )
+            raise ModelCapabilityError("Embedding 使用本地模型，不能调用 DeepSeek")
+        if len(model_name) > 64:
+            await self._log(
+                config,
+                task,
+                scope,
+                status=ModelCallStatus.FAILED,
+                latency_ms=_latency(started),
+                error_code="model_capability",
+                error_message="Embedding 模型名称过长",
+                created_at=created_at,
+            )
+            raise ModelCapabilityError("Embedding 模型名称过长")
+        backend = self._embedder or _default_embedder()
+        try:
+            vectors = await backend.embed(model_name, cleaned)
+        except ModelAdapterError as exc:
+            await self._log_exception(config, task, scope, exc, started, created_at)
+            raise
+        if len(vectors) != len(cleaned) or any(len(vector) != EMBEDDING_DIMENSIONS for vector in vectors):
+            await self._log(
+                config,
+                task,
+                scope,
+                status=ModelCallStatus.FAILED,
+                latency_ms=_latency(started),
+                error_code="invalid_embedding",
+                error_message="向量维度不正确",
+                created_at=created_at,
+            )
+            raise ModelOutputError("向量维度不正确")
+        await self._log(
+            config,
+            task,
+            scope,
+            status=ModelCallStatus.SUCCESS,
+            latency_ms=_latency(started),
+            created_at=created_at,
+        )
+        return EmbeddingResult(model_name=model_name, vectors=vectors)
 
     async def _complete_with_retry(
         self,
@@ -301,7 +365,7 @@ class ModelAdapter:
             config_id=_config_attr(config, "id"),
             trace_id=scope.trace_id,
             task_type=CONFIG_TASK_TYPES[task],
-            provider=ModelProvider.DEEPSEEK,
+            provider=_provider(config),
             model_name=str(_config_attr(config, "model_name")),
             status=status,
             latency_ms=latency_ms,
@@ -348,6 +412,16 @@ def _stream_piece(chunk: dict[str, object]) -> str:
     return content if isinstance(content, str) else ""
 
 
+def _invalid_locations(exc: ValidationError) -> list[str]:
+    locations: list[str] = []
+    for err in exc.errors()[:6]:
+        loc = err.get("loc", ())
+        path = ".".join(str(part) for part in loc) if isinstance(loc, tuple) else ""
+        kind = str(err.get("type", "invalid"))
+        locations.append(f"{path or 'root'}:{kind}")
+    return locations
+
+
 def _optional_int(value: object) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
@@ -360,3 +434,16 @@ def _latency(started: float) -> int:
 
 def _config_attr(config: object, name: str) -> object:
     return getattr(config, name)
+
+
+def _provider(config: object) -> ModelProvider:
+    raw = getattr(config, "provider", ModelProvider.DEEPSEEK.value)
+    if isinstance(raw, ModelProvider):
+        return raw
+    return ModelProvider(str(raw))
+
+
+def _default_embedder() -> TextEmbedder:
+    from app.modules.model_adapter.services.local_embedder import FastEmbedBackend
+
+    return FastEmbedBackend()

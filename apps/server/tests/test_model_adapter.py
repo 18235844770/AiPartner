@@ -10,7 +10,8 @@ from sqlalchemy import text
 
 from app.config.settings import Settings
 from app.main import create_app
-from app.modules.infrastructure.domain.enums import ModelCallStatus, ModelConfigKey
+from app.modules.infrastructure.domain.enums import ModelCallStatus, ModelConfigKey, ModelProvider
+from app.modules.model_adapter.domain.embedding import EMBEDDING_DIMENSIONS
 from app.modules.model_adapter.domain.errors import ModelCapabilityError, ModelHttpError, ModelOutputError, ModelTimeoutError
 from app.modules.model_adapter.domain.messages import ChatMessage, build_chat_payload
 from app.modules.model_adapter.services.deepseek_client import DeepSeekHttpClient, parse_sse_data_line
@@ -88,13 +89,20 @@ def _scope() -> ModelCallScope:
     return ModelCallScope(trace_id=uuid.uuid4())
 
 
-def _adapter(client: _Client, config: object, logs: _Logs, retries: int = 1) -> ModelAdapter:
+def _adapter(
+    client: _Client,
+    config: object,
+    logs: _Logs,
+    retries: int = 1,
+    embedder: object | None = None,
+) -> ModelAdapter:
     return ModelAdapter(
         client=client,  # type: ignore[arg-type]
         settings=Settings(deepseek_api_key="test-key", deepseek_max_retries=retries, deepseek_timeout_seconds=1),
         configs=_Configs(config),  # type: ignore[arg-type]
         logs=logs,  # type: ignore[arg-type]
-        session_factory=_Session,
+        session_factory=_Session,  # type: ignore[arg-type]
+        embedder=embedder,  # type: ignore[arg-type]
     )
 
 
@@ -189,11 +197,44 @@ async def test_structured_output_rejects_a_shape_the_model_did_not_match() -> No
 
 
 @pytest.mark.asyncio
-async def test_embedding_is_refused_without_a_provider_call() -> None:
+async def test_embedding_refuses_deepseek_and_uses_the_local_backend() -> None:
     client = _Client()
-    adapter = _adapter(client, _config(), _Logs())
+    refused_logs = _Logs()
+    refused = _adapter(client, _config(), refused_logs)
     with pytest.raises(ModelCapabilityError):
-        await adapter.embed(ModelConfigKey.EMBEDDING, _scope())
+        await refused.embed(ModelConfigKey.EMBEDDING, ["记住这件事"], _scope())
+    assert client.payloads == []
+    assert refused_logs.records[0].provider == ModelProvider.DEEPSEEK
+    assert refused_logs.records[0].status == ModelCallStatus.FAILED
+
+    class _Backend:
+        async def embed(self, model_name: str, texts: list[str]) -> list[list[float]]:
+            assert model_name == "BAAI/bge-m3"
+            assert texts == ["记住这件事"]
+            return [[0.0] * EMBEDDING_DIMENSIONS]
+
+    logs = _Logs()
+    config = _config()
+    config.provider = "local"
+    config.model_name = "BAAI/bge-m3"
+    config.task_type = "embedding"
+    adapter = _adapter(client, config, logs, embedder=_Backend())
+    result = await adapter.embed(ModelConfigKey.EMBEDDING, ["记住这件事"], _scope())
+    assert len(result.vectors[0]) == EMBEDDING_DIMENSIONS
+    assert client.payloads == []
+    assert logs.records[0].provider == ModelProvider.LOCAL
+    assert logs.records[0].status == ModelCallStatus.SUCCESS
+
+    class _Short:
+        async def embed(self, model_name: str, texts: list[str]) -> list[list[float]]:
+            del model_name, texts
+            return [[0.1, 0.2]]
+
+    short_logs = _Logs()
+    short = _adapter(client, config, short_logs, embedder=_Short())
+    with pytest.raises(ModelOutputError):
+        await short.embed(ModelConfigKey.EMBEDDING, ["记住这件事"], _scope())
+    assert short_logs.records[0].status == ModelCallStatus.FAILED
     assert client.payloads == []
 
 

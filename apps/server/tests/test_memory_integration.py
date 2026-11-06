@@ -98,7 +98,7 @@ async def test_memory_keeps_versions_and_requires_inference_evidence(database_re
         assert pending.status_code == 201
         completed = await client.post(
             f"{base}/{memory_id}/embeddings",
-            json={"embedding_model": "completed-model", "status": "completed", "embedding": [0.1, 0.2]},
+            json={"embedding_model": "completed-model", "status": "completed", "embedding": [0.1] * 1024},
         )
         assert completed.status_code == 201
         foreign = await client.get(f"/api/users/{uuid.uuid4()}/companions/{companion_id}/memories/{memory_id}")

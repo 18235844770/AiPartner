@@ -1,8 +1,15 @@
 from enum import StrEnum
 
-# 设计文档要求 messages.status，但没有枚举取值。
-# recorded 只表示原始消息已经落库，不代表后续投递状态机。
-MESSAGE_STATUS_RECORDED = "recorded"
+
+class MessageStatus(StrEnum):
+    RECORDED = "recorded"
+    GENERATING = "generating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+
+
+MESSAGE_STATUS_RECORDED = MessageStatus.RECORDED.value
 
 
 class ConversationStatus(StrEnum):

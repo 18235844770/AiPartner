@@ -22,7 +22,7 @@ from app.modules.memory.domain.extraction import (
 from app.modules.memory.services.extraction import MemoryExtractionService
 from app.modules.model_adapter.domain.errors import ModelOutputError
 from app.shared.database.session import dispose_engine, get_engine, get_session_factory
-from tests.test_dialogue_turn import _Adapter, _client, _prepare, _suggestion
+from tests.test_dialogue_turn import _Adapter, _client, _events, _prepare, _suggestion
 
 
 @pytest.fixture
@@ -88,10 +88,18 @@ def test_extraction_prompt_lists_existing_memories_without_scores() -> None:
 
 
 async def _evaluate_count(message_id: str) -> int:
+    return await _task_count_for(f"memory-evaluate:{message_id}")
+
+
+async def _relation_count(message_id: str) -> int:
+    return await _task_count_for(f"memory-relation:{message_id}")
+
+
+async def _task_count_for(task_key: str) -> int:
     async with get_engine().connect() as connection:
         count = await connection.scalar(
             text("SELECT count(*) FROM background_tasks WHERE task_key = :task_key"),
-            {"task_key": f"memory-evaluate:{message_id}"},
+            {"task_key": task_key},
         )
     return int(count or 0)
 
@@ -103,6 +111,16 @@ async def _task_count(message_id: str) -> int:
             {"task_key": f"memory-extract:{message_id}"},
         )
     return int(count or 0)
+
+
+async def _user_message_id(client_message_id: str) -> str:
+    async with get_engine().connect() as connection:
+        message_id = await connection.scalar(
+            text("SELECT id FROM messages WHERE client_message_id = :client_message_id"),
+            {"client_message_id": client_message_id},
+        )
+    assert message_id is not None
+    return str(message_id)
 
 
 async def _run(task_id: uuid.UUID, model: _MemoryModel):
@@ -130,10 +148,14 @@ async def test_user_turn_schedules_one_extract_task(database_ready: None) -> Non
         scope = await _prepare(client)
         first = await client.post(scope.turns, json={"content": "我喜欢喝茶", "client_message_id": client_message_id})
         second = await client.post(scope.turns, json={"content": "我喜欢喝茶", "client_message_id": client_message_id})
-        assert first.status_code == 201
-        assert second.status_code == 200
-        message_id = first.json()["user_message_id"]
+        first_events = _events(first)
+        second_events = _events(second)
+        assert first_events[0][0] == "turn.started"
+        assert second_events[0][1]["turn_id"] == first_events[0][1]["turn_id"]
+        message_id = await _user_message_id(client_message_id)
     assert await _task_count(message_id) == 1
+    assert await _task_count_for(f"memory-summarize:{message_id}") == 1
+    assert await _task_count_for(f"state-maintenance:{message_id}") == 1
 
 
 @pytest.mark.asyncio
@@ -184,13 +206,22 @@ async def test_extraction_stores_candidates_and_does_not_repeat(database_ready: 
         finished = await _run(created.task.id, model)
         assert finished is not None
         assert finished.status == "completed"
-        assert finished.result == {"created": 2, "supplemented": 0, "corrected": 0, "ignored": 0, "skipped": False}
+        assert finished.result == {
+            "created": 2,
+            "supplemented": 0,
+            "corrected": 0,
+            "ignored": 0,
+            "working": 0,
+            "skipped": False,
+        }
         again = await _run(created.task.id, model)
         assert again is not None
         assert again.status == "completed"
         assert model.calls == 1
         assert await _task_count(message_id) == 1
         assert await _evaluate_count(message_id) == 1
+        assert await _relation_count(message_id) == 1
+        assert await _task_count_for(f"proactive-check:event:message:{message_id}") == 1
         listed = await client.get(f"/api/users/{user_id}/companions/{companion_id}/memories")
         rows = listed.json()
         assert len(rows) == 2
@@ -250,6 +281,8 @@ async def test_extraction_failure_writes_no_memory(database_ready: None) -> None
         listed = await client.get(f"/api/users/{user_id}/companions/{companion_id}/memories")
         assert listed.json() == []
         assert await _evaluate_count(message_id) == 0
+        assert await _relation_count(message_id) == 0
+        assert await _task_count_for(f"proactive-check:event:message:{message_id}") == 0
 
 
 @pytest.mark.asyncio
@@ -377,7 +410,14 @@ async def test_extraction_supplements_corrects_or_ignores_existing_memories(data
         finished = await _run(created.task.id, model)
         assert finished is not None
         assert finished.status == "completed"
-        assert finished.result == {"created": 1, "supplemented": 1, "corrected": 1, "ignored": 2, "skipped": False}
+        assert finished.result == {
+            "created": 1,
+            "supplemented": 1,
+            "corrected": 1,
+            "ignored": 2,
+            "working": 0,
+            "skipped": False,
+        }
         prompt = model.messages[1].content
         assert tea_id in prompt
         assert city_id in prompt

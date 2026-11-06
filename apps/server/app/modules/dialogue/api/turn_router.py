@@ -1,10 +1,12 @@
 import uuid
+from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.dialogue.api.schemas import ProactiveTurnRequest, TurnResponse, UserTurnRequest
-from app.modules.dialogue.services.dialogue_service import to_decision_response
+from app.modules.dialogue.api.schemas import ProactiveTurnRequest, UserTurnRequest
+from app.modules.dialogue.api.stream_schemas import TurnStreamEvent, encode_sse
 from app.modules.dialogue.services.turn_service import DialogueTurnService
 from app.shared.database.session import get_session
 
@@ -18,19 +20,18 @@ def get_turn_service() -> DialogueTurnService:
 
 @router.post(
     "/users/{user_id}/companions/{companion_id}/conversations/{conversation_id}/turns",
-    response_model=TurnResponse,
-    status_code=201,
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}}},
 )
 async def respond_to_user(
     user_id: uuid.UUID,
     companion_id: uuid.UUID,
     conversation_id: uuid.UUID,
     body: UserTurnRequest,
-    response: Response,
     session: AsyncSession = Depends(get_session),
     service: DialogueTurnService = Depends(get_turn_service),
-) -> TurnResponse:
-    result = await service.respond_to_user(
+) -> StreamingResponse:
+    stream = service.iter_user_turn(
         session,
         user_id,
         companion_id,
@@ -38,19 +39,13 @@ async def respond_to_user(
         body.content,
         body.client_message_id,
     )
-    if result.replay:
-        response.status_code = 200
-    return TurnResponse(
-        user_message_id=result.user_message_id,
-        companion_message_id=result.decision.result_message_id,
-        decision=to_decision_response(result.decision),
-    )
+    return await _event_response(stream)
 
 
 @router.post(
     "/users/{user_id}/companions/{companion_id}/proactive-turns",
-    response_model=TurnResponse,
-    status_code=201,
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}}},
 )
 async def consider_proactive(
     user_id: uuid.UUID,
@@ -58,10 +53,21 @@ async def consider_proactive(
     body: ProactiveTurnRequest,
     session: AsyncSession = Depends(get_session),
     service: DialogueTurnService = Depends(get_turn_service),
-) -> TurnResponse:
-    result = await service.consider_proactive(session, user_id, companion_id, body.conversation_id)
-    return TurnResponse(
-        user_message_id=None,
-        companion_message_id=result.decision.result_message_id,
-        decision=to_decision_response(result.decision),
+) -> StreamingResponse:
+    stream = service.iter_proactive_turn(session, user_id, companion_id, body.conversation_id)
+    return await _event_response(stream)
+
+
+async def _event_response(stream: AsyncIterator[TurnStreamEvent]) -> StreamingResponse:
+    first = await anext(stream)
+
+    async def frames() -> AsyncIterator[str]:
+        yield encode_sse(first)
+        async for event in stream:
+            yield encode_sse(event)
+
+    return StreamingResponse(
+        frames(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

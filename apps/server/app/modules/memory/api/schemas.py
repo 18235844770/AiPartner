@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.memory.domain.enums import (
     EmbeddingStatus,
@@ -13,6 +13,7 @@ from app.modules.memory.domain.enums import (
     MemorySourceType,
     MemoryType,
 )
+from app.modules.model_adapter.domain.embedding import EMBEDDING_DIMENSIONS
 
 
 class MemorySourceInput(BaseModel):
@@ -54,6 +55,12 @@ class CreateMemoryRequest(BaseModel):
             return None
         stripped = value.strip()
         return stripped or None
+
+    @model_validator(mode="after")
+    def working_context_is_not_a_memory(self) -> "CreateMemoryRequest":
+        if self.memory_type == MemoryType.WORKING:
+            raise ValueError("工作记忆写入 working_memories，不能作为正式记忆")
+        return self
 
 
 class CreateMemoryVersionRequest(BaseModel):
@@ -108,6 +115,8 @@ class RecordEmbeddingRequest(BaseModel):
     @field_validator("embedding")
     @classmethod
     def completed_needs_values(cls, value: list[float] | None, info) -> list[float] | None:
+        if value is not None and len(value) != EMBEDDING_DIMENSIONS:
+            raise ValueError("向量维度必须是 1024")
         status = info.data.get("status")
         if status == EmbeddingStatus.COMPLETED and not value:
             raise ValueError("完成状态必须带有向量")

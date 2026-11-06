@@ -20,7 +20,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.modules.model_adapter.domain.embedding import EMBEDDING_DIMENSIONS
 from app.modules.memory.domain.enums import (
+    AttentionOrigin,
+    AttentionStatus,
     EmbeddingStatus,
     MemoryChangeType,
     MemoryOrigin,
@@ -78,6 +81,7 @@ class Memory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_memories_companion_category", "companion_id", "memory_category"),
         Index("ix_memories_companion_importance", "companion_id", "importance"),
         Index("ix_memories_companion_updated_at", "companion_id", "updated_at"),
+        UniqueConstraint("companion_id", "id", name="uq_memories_companion_id"),
     )
 
     companion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -243,7 +247,7 @@ class MemoryRelation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class MemoryEmbedding(UUIDPrimaryKeyMixin, Base):
-    """向量维度不在模型能力核实前锁定，因此使用不限定维度的 vector。"""
+    """本地 BGE-M3 向量，维度 1024。不同模型的向量不能混在一起比较。"""
 
     __tablename__ = "memory_embeddings"
     __table_args__ = (
@@ -269,7 +273,7 @@ class MemoryEmbedding(UUIDPrimaryKeyMixin, Base):
 
     memory_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     embedding_model: Mapped[str] = mapped_column(String(64), nullable=False)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS), nullable=True)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(
         String(16),
@@ -277,6 +281,109 @@ class MemoryEmbedding(UUIDPrimaryKeyMixin, Base):
         default=EmbeddingStatus.PENDING.value,
         server_default=text("'pending'"),
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class AttentionTopic(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "attention_topics"
+    __table_args__ = (
+        UniqueConstraint("companion_id", "id", name="uq_attention_topics_companion_id"),
+        ForeignKeyConstraint(
+            ["companion_id"],
+            ["companions.id"],
+            name="fk_attention_topics_companion_id_companions",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(_in_list("origin_type", AttentionOrigin), name="origin_type"),
+        CheckConstraint(_in_list("status", AttentionStatus), name="status"),
+        CheckConstraint("char_length(title) > 0", name="title_nonempty"),
+        CheckConstraint("interest_score BETWEEN 0 AND 1", name="interest_score_range"),
+        Index("ix_attention_topics_companion_status", "companion_id", "status"),
+        Index("ix_attention_topics_status_review", "status", "next_review_at"),
+    )
+
+    companion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    title: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=AttentionStatus.ACTIVE.value,
+        server_default=text("'active'"),
+    )
+    interest_score: Mapped[Decimal] = mapped_column(
+        Numeric(4, 3),
+        nullable=False,
+        default=Decimal("0.500"),
+        server_default=text("0.500"),
+    )
+    last_discussed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WorkingMemory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "working_memories"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", name="uq_working_memories_conversation_id"),
+        ForeignKeyConstraint(
+            ["companion_id", "conversation_id"],
+            ["conversations.companion_id", "conversations.id"],
+            name="fk_working_memories_conversation_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["companion_id", "attention_topic_id"],
+            ["attention_topics.companion_id", "attention_topics.id"],
+            name="fk_working_memories_attention_topic_scope",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint("jsonb_typeof(open_threads) = 'array'", name="open_threads_array"),
+        Index("ix_working_memories_companion_id", "companion_id"),
+    )
+
+    companion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_topic: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    attention_topic_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    open_threads: Mapped[list[dict[str, object]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+
+
+class AttentionTopicMemory(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "attention_topic_memories"
+    __table_args__ = (
+        UniqueConstraint("topic_id", "memory_id", name="uq_attention_topic_memories_topic_memory"),
+        ForeignKeyConstraint(
+            ["companion_id", "topic_id"],
+            ["attention_topics.companion_id", "attention_topics.id"],
+            name="fk_attention_topic_memories_topic_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["companion_id", "memory_id"],
+            ["memories.companion_id", "memories.id"],
+            name="fk_attention_topic_memories_memory_scope",
+            ondelete="RESTRICT",
+        ),
+    )
+
+    companion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    topic_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    memory_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

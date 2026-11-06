@@ -3,6 +3,7 @@ from enum import StrEnum
 
 class ModelProvider(StrEnum):
     DEEPSEEK = "deepseek"
+    LOCAL = "local"
 
 
 class ModelConfigKey(StrEnum):

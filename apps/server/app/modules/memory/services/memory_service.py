@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.conversation.services.conversation_service import ConversationService
 from app.modules.identity.services.identity_service import IdentityService
+from app.modules.infrastructure.api.schemas import CreateBackgroundTaskRequest
+from app.modules.infrastructure.domain.enums import BackgroundTaskType
+from app.modules.infrastructure.services.background_task_service import BackgroundTaskService
 from app.modules.memory.api.schemas import (
     CreateMemoryRelationRequest,
     CreateMemoryRequest,
@@ -26,6 +29,7 @@ from app.modules.memory.domain.enums import (
     MemorySourceType,
     MemoryStatus,
 )
+from app.modules.model_adapter.domain.embedding import EMBEDDING_DIMENSIONS
 from app.modules.memory.repositories.memory_repository import MemoryRepository
 from app.modules.memory.repositories.models import Memory, MemoryEmbedding, MemoryRelation, MemorySource, MemoryVersion
 from app.shared.exceptions.errors import AppError, ConflictError, NotFoundError
@@ -103,6 +107,7 @@ class MemoryService:
         sources = []
         for item in data.sources:
             sources.append(await self._add_source(session, user_id, companion_id, memory, item))
+        await self._schedule_embedding(session, user_id, companion_id, memory.id, version.id)
         return memory, version, sources
 
     async def get_memory(
@@ -186,6 +191,7 @@ class MemoryService:
         memory.current_version_id = version.id
         memory.updated_at = datetime.now(UTC)
         await session.flush()
+        await self._schedule_embedding(session, user_id, companion_id, memory.id, version.id)
         return memory, version, sources
 
     async def attach_message_source(
@@ -214,24 +220,37 @@ class MemoryService:
         memory_id: uuid.UUID,
         data: CreateMemoryRelationRequest,
     ) -> MemoryRelation:
-        async with session.begin():
-            await self._identity.get_owned_companion(session, user_id, companion_id)
-            source = await self._require_memory(session, companion_id, memory_id)
-            target = await self._require_memory(session, companion_id, data.target_memory_id)
-            if source.id == target.id:
-                raise ConflictError("记忆关系的两端不能相同")
-            relation = await self._memories.add_relation(
-                session,
-                MemoryRelation(
-                    source_memory_id=source.id,
-                    target_memory_id=target.id,
-                    relation_type=data.relation_type.value,
-                    strength=data.strength,
-                    description=data.description,
-                ),
-            )
-        logger.info("related memory %s -> %s", source.id, target.id)
+        if session.in_transaction():
+            relation = await self._add_relation(session, user_id, companion_id, memory_id, data)
+        else:
+            async with session.begin():
+                relation = await self._add_relation(session, user_id, companion_id, memory_id, data)
+        logger.info("related memory %s -> %s", relation.source_memory_id, relation.target_memory_id)
         return relation
+
+    async def _add_relation(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        memory_id: uuid.UUID,
+        data: CreateMemoryRelationRequest,
+    ) -> MemoryRelation:
+        await self._identity.get_owned_companion(session, user_id, companion_id)
+        source = await self._require_memory(session, companion_id, memory_id)
+        target = await self._require_memory(session, companion_id, data.target_memory_id)
+        if source.id == target.id:
+            raise ConflictError("记忆关系的两端不能相同")
+        return await self._memories.add_relation(
+            session,
+            MemoryRelation(
+                source_memory_id=source.id,
+                target_memory_id=target.id,
+                relation_type=data.relation_type.value,
+                strength=data.strength,
+                description=data.description,
+            ),
+        )
 
     async def record_embedding(
         self,
@@ -244,6 +263,8 @@ class MemoryService:
         async with session.begin():
             await self._identity.get_owned_companion(session, user_id, companion_id)
             _memory, version, _sources = await self._require_current(session, companion_id, memory_id)
+            if data.embedding is not None and len(data.embedding) != EMBEDDING_DIMENSIONS:
+                raise AppError("向量维度必须是 1024")
             if data.status == EmbeddingStatus.COMPLETED and not data.embedding:
                 raise AppError("完成状态必须带有向量")
             embedding = await self._memories.add_embedding(
@@ -258,6 +279,65 @@ class MemoryService:
             )
         logger.info("recorded embedding %s for version %s", embedding.id, version.id)
         return embedding
+
+    async def require_version(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        memory_id: uuid.UUID,
+        version_id: uuid.UUID,
+    ) -> tuple[Memory, MemoryVersion]:
+        if session.in_transaction():
+            return await self._require_version(session, user_id, companion_id, memory_id, version_id)
+        async with session.begin():
+            return await self._require_version(session, user_id, companion_id, memory_id, version_id)
+
+    async def store_embedding(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        memory_id: uuid.UUID,
+        version_id: uuid.UUID,
+        *,
+        embedding_model: str,
+        status: EmbeddingStatus,
+        embedding: list[float] | None,
+    ) -> MemoryEmbedding:
+        if session.in_transaction():
+            stored = await self._store_embedding(
+                session,
+                user_id,
+                companion_id,
+                memory_id,
+                version_id,
+                embedding_model=embedding_model,
+                status=status,
+                embedding=embedding,
+            )
+        else:
+            async with session.begin():
+                stored = await self._store_embedding(
+                    session,
+                    user_id,
+                    companion_id,
+                    memory_id,
+                    version_id,
+                    embedding_model=embedding_model,
+                    status=status,
+                    embedding=embedding,
+                )
+        logger.info("stored embedding %s for version %s", stored.id, version_id)
+        return stored
+
+    async def find_embedding(
+        self,
+        session: AsyncSession,
+        version_id: uuid.UUID,
+        embedding_model: str,
+    ) -> MemoryEmbedding | None:
+        return await self._memories.get_embedding(session, version_id, embedding_model)
 
     async def list_message_memories(
         self,
@@ -443,6 +523,84 @@ class MemoryService:
             raise NotFoundError("记忆不存在")
         sources = await self._memories.list_sources(session, memory.id)
         return memory, version, sources
+
+    async def _require_version(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        memory_id: uuid.UUID,
+        version_id: uuid.UUID,
+    ) -> tuple[Memory, MemoryVersion]:
+        await self._identity.get_owned_companion(session, user_id, companion_id)
+        memory = await self._require_memory(session, companion_id, memory_id)
+        version = await self._memories.get_version(session, version_id)
+        if version is None or version.memory_id != memory.id:
+            raise NotFoundError("记忆不存在")
+        return memory, version
+
+    async def _store_embedding(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        memory_id: uuid.UUID,
+        version_id: uuid.UUID,
+        *,
+        embedding_model: str,
+        status: EmbeddingStatus,
+        embedding: list[float] | None,
+    ) -> MemoryEmbedding:
+        _memory, version = await self._require_version(session, user_id, companion_id, memory_id, version_id)
+        if status == EmbeddingStatus.COMPLETED:
+            if embedding is None or len(embedding) != EMBEDDING_DIMENSIONS:
+                raise AppError("完成状态必须带有 1024 维向量")
+        elif embedding is not None:
+            raise AppError("未完成的向量不能保存向量值")
+        digest = hashlib.sha256(version.content.encode("utf-8")).hexdigest()
+        existing = await self._memories.get_embedding(session, version.id, embedding_model)
+        if existing is not None:
+            existing.embedding = embedding
+            existing.content_hash = digest
+            existing.status = status.value
+            await session.flush()
+            return existing
+        return await self._memories.add_embedding(
+            session,
+            MemoryEmbedding(
+                memory_version_id=version.id,
+                embedding_model=embedding_model,
+                embedding=embedding,
+                content_hash=digest,
+                status=status.value,
+            ),
+        )
+
+    async def _schedule_embedding(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        memory_id: uuid.UUID,
+        version_id: uuid.UUID,
+    ) -> None:
+        await BackgroundTaskService().create(
+            session,
+            CreateBackgroundTaskRequest(
+                user_id=user_id,
+                companion_id=companion_id,
+                task_type=BackgroundTaskType.MEMORY_EMBEDDING,
+                task_key=f"memory-embedding:{version_id}",
+                queue_name="memory",
+                payload={
+                    "user_id": str(user_id),
+                    "memory_id": str(memory_id),
+                    "version_id": str(version_id),
+                },
+                max_retries=2,
+                scheduled_at=datetime.now(UTC),
+            ),
+        )
 
     def _require_inference_sources(self, data: CreateMemoryRequest) -> None:
         needs_evidence = data.is_inference or data.memory_origin == MemoryOrigin.AI_INFERENCE

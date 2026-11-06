@@ -23,6 +23,10 @@ from app.shared.database.session import get_session
 config_router = APIRouter(prefix="/model-configs", tags=["infrastructure"])
 log_router = APIRouter(prefix="/model-call-logs", tags=["infrastructure"])
 task_router = APIRouter(prefix="/background-tasks", tags=["infrastructure"])
+scope_router = APIRouter(
+    prefix="/users/{user_id}/companions/{companion_id}",
+    tags=["infrastructure"],
+)
 
 config_service = ModelConfigService()
 log_service = ModelCallLogService()
@@ -80,6 +84,26 @@ async def list_model_calls(
 ) -> list[ModelCallLogResponse]:
     logs = await log_service.list_by_trace(session, trace_id)
     return [to_log_response(log) for log in logs]
+
+
+@scope_router.get("/model-call-logs", response_model=list[ModelCallLogResponse])
+async def list_companion_model_calls(
+    user_id: uuid.UUID,
+    companion_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+) -> list[ModelCallLogResponse]:
+    logs = await log_service.list_for_companion(session, user_id, companion_id)
+    return [to_log_response(log) for log in logs]
+
+
+@scope_router.get("/background-tasks", response_model=list[BackgroundTaskResponse])
+async def list_companion_background_tasks(
+    user_id: uuid.UUID,
+    companion_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+) -> list[BackgroundTaskResponse]:
+    tasks = await task_service.list_for_companion(session, user_id, companion_id)
+    return [to_task_response(task) for task in tasks]
 
 
 @task_router.post("", response_model=BackgroundTaskResponse)

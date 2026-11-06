@@ -55,6 +55,9 @@ class PersonaService:
         user_id: uuid.UUID,
         companion_id: uuid.UUID,
     ) -> tuple[PersonaProfile, PersonaVersion]:
+        if session.in_transaction():
+            await self._identity.get_owned_companion(session, user_id, companion_id)
+            return await self._require_current(session, companion_id)
         async with session.begin():
             await self._identity.get_owned_companion(session, user_id, companion_id)
             return await self._require_current(session, companion_id)

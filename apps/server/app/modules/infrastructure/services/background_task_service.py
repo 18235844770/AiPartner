@@ -18,6 +18,8 @@ from app.shared.exceptions.errors import AppError, ConflictError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
+RECENT_TASK_LIMIT = 50
+
 
 class TaskWriteResult:
     def __init__(self, task: BackgroundTask, created: bool) -> None:
@@ -74,6 +76,26 @@ class BackgroundTaskService:
         )
         await self._tasks.add(session, task)
         return TaskWriteResult(task, created=True)
+
+    async def list_for_companion(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+    ) -> list[BackgroundTask]:
+        if session.in_transaction():
+            return await self._list_for_companion(session, user_id, companion_id)
+        async with session.begin():
+            return await self._list_for_companion(session, user_id, companion_id)
+
+    async def _list_for_companion(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+    ) -> list[BackgroundTask]:
+        await self._identity.get_owned_companion(session, user_id, companion_id)
+        return await self._tasks.list_recent_by_companion(session, companion_id, RECENT_TASK_LIMIT)
 
     async def get(self, session: AsyncSession, task_id: uuid.UUID) -> BackgroundTask:
         if session.in_transaction():

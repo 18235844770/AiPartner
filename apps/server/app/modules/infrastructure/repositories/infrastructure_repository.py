@@ -77,6 +77,20 @@ class BackgroundTaskRepository:
         statement = select(BackgroundTask).where(BackgroundTask.task_key == task_key).with_for_update()
         return (await session.execute(statement)).scalar_one_or_none()
 
+    async def list_recent_by_companion(
+        self,
+        session: AsyncSession,
+        companion_id: uuid.UUID,
+        limit: int,
+    ) -> list[BackgroundTask]:
+        statement = (
+            select(BackgroundTask)
+            .where(BackgroundTask.companion_id == companion_id)
+            .order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc())
+            .limit(limit)
+        )
+        return list((await session.execute(statement)).scalars().all())
+
     async def list_due_ids(self, session: AsyncSession, now: datetime, limit: int) -> list[uuid.UUID]:
         statement = (
             select(BackgroundTask.id)
@@ -98,6 +112,20 @@ class ModelCallLogRepository:
         session.add(log)
         await session.flush()
         return log
+
+    async def list_recent_by_companion(
+        self,
+        session: AsyncSession,
+        companion_id: uuid.UUID,
+        limit: int,
+    ) -> list[ModelCallLog]:
+        statement = (
+            select(ModelCallLog)
+            .where(ModelCallLog.companion_id == companion_id)
+            .order_by(ModelCallLog.created_at.desc(), ModelCallLog.id.desc())
+            .limit(limit)
+        )
+        return list((await session.execute(statement)).scalars().all())
 
     async def list_by_trace(self, session: AsyncSession, trace_id: uuid.UUID) -> list[ModelCallLog]:
         statement = (

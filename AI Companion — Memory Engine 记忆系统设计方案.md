@@ -689,23 +689,17 @@ class MemoryVersion:    id: str    memory_id: str    version: int    content_sna
 
 
 
-### 12.6 working_memory
+### 12.6 working_memories
 
-保存工作记忆。
+工作记忆按会话保存，每个会话一行。它不进入 `memories` 的生命周期，也不生成 Embedding。
 
-```
-class WorkingMemory:    id: str    conversation_id: str    summary: str    open_threads: list    current_topic: str    expires_at: datetime
-```
-
-
+字段包括 `conversation_id`、`summary`、`current_topic`、`attention_topic_id`、`open_threads`、`expires_at`、`archived_at` 和 `version`。当前用户消息里的即时事实只进入本回合，不写入这张表。
 
 ### 12.7 attention_topics
 
-保存长期关注主题。
+长期关注主题是独立对象，不写进人格版本，也不当作一条普通记忆。
 
-```
-class AttentionTopic:    id: str    title: str    description: str    origin_type: str    status: str    interest_score: float    last_discussed_at: datetime    next_review_at: datetime | None
-```
+`attention_topics` 保存标题、描述、`origin_type`、状态、`interest_score`、`last_discussed_at` 和 `next_review_at`。`attention_topic_memories` 把主题和作为证据的记忆连起来。人格初始兴趣仍留在人格版本中。
 
 
 

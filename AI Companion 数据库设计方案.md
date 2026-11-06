@@ -62,13 +62,13 @@ AI Companion 并不是一个普通聊天应用。它需要具备独立人格、�
 | Identity       | 用户和 AI 陪伴实例           | 2            |
 | Conversation   | 会话和消息                   | 2            |
 | Persona        | 人格主体和人格版本           | 2            |
-| Memory         | 长期记忆及其关联数据         | 5            |
+| Memory         | 长期记忆、工作记忆和关注主题 | 8            |
 | State          | 当前状态和状态历史           | 2            |
 | Dialogue       | 交流行为决策                 | 1            |
 | Infrastructure | 模型配置、调用日志和后台任务 | 3            |
-| **合计**       |                              | **17**       |
+| **合计**       |                              | **20**       |
 
-## 2.2 17 张核心表
+## 2.2 20 张核心表
 
 ### Identity
 
@@ -92,6 +92,9 @@ AI Companion 并不是一个普通聊天应用。它需要具备独立人格、�
 - `memory_sources`
 - `memory_relations`
 - `memory_embeddings`
+- `working_memories`
+- `attention_topics`
+- `attention_topic_memories`
 
 ### State
 
@@ -126,6 +129,11 @@ User
       │    ├── MemorySource（1:N）
       │    ├── MemoryRelation（自关联）
       │    └── MemoryEmbedding（通过 MemoryVersion 关联）
+      │
+      ├── WorkingMemory（每个 Conversation 一条）
+      │
+      ├── AttentionTopic（1:N）
+      │    └── AttentionTopicMemory（连接 Memory）
       │
       ├── CompanionState（1:1）
       │    └── StateEvent（1:N）
@@ -393,7 +401,7 @@ Memory 是 AI 长期连续性的重要基础。
 3. Semantic Memory：语义记忆与长期认知。
 4. Episodic Memory：情景经历记忆。
 
-原始对话由 Message 保存，其余记忆由 Memory 系统管理。
+原始对话由 Message 保存。语义记忆和情景记忆由 `memories` 管理。工作记忆按会话单独放在 `working_memories`，长期关注主题放在 `attention_topics`。二者都不进入记忆生命周期，也不生成 Embedding。
 
 ## 6.2 memories 表
 
@@ -424,7 +432,7 @@ Memory 是 AI 长期连续性的重要基础。
 
 ### memory_type
 
-- `working`
+- `working`：保留在约束中，新的会话上下文不再写入此值
 - `semantic`
 - `episodic`
 
@@ -615,6 +623,49 @@ UNIQUE (memory_version_id, embedding_model)
 向量生成失败不影响记忆保存，后台任务可以补齐。
 
 第一版采用 PostgreSQL + pgvector，优先考虑 HNSW 索引，使用余弦距离作为初始检索方案。
+
+## 6.7 working_memories 表
+
+每个会话一条，保存当前话题和未完成事项。它保证这场对话的连续性，会话结束或过期后可以归档。有价值的内容再提取为语义记忆或情景记忆。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | UUID | 主键 |
+| companion_id | UUID | 所属 Companion |
+| conversation_id | UUID | 所属会话，唯一 |
+| summary | TEXT | 当前话题摘要 |
+| current_topic | VARCHAR(128) | 正在讨论的题目 |
+| attention_topic_id | UUID | 可空，挂接的长期关注 |
+| open_threads | JSONB | 未完成事项 |
+| expires_at | TIMESTAMPTZ | 临时信息过期时间 |
+| archived_at | TIMESTAMPTZ | 归档时间 |
+| version | INTEGER | 乐观锁 |
+| created_at | TIMESTAMPTZ | 创建时间 |
+| updated_at | TIMESTAMPTZ | 更新时间 |
+
+`companion_id` 与 `conversation_id` 使用复合外键，保证工作记忆和会话属于同一个 Companion。`attention_topic_id` 同样通过复合外键限制在同一 Companion。过期或已归档的工作记忆不进入当前回合。
+
+## 6.8 attention_topics 与 attention_topic_memories 表
+
+长期关注主题是 Companion 级对象，用来决定以后是否还值得主动提起。人格初始兴趣仍留在人格版本中。只有交流里形成持续关注时才创建主题。
+
+`attention_topics`：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | UUID | 主键 |
+| companion_id | UUID | 所属 Companion |
+| title | VARCHAR(128) | 主题名称 |
+| description | TEXT | 主题描述 |
+| origin_type | VARCHAR(32) | `user_related` 或 `persona_autonomous` |
+| status | VARCHAR(16) | `active`、`paused`、`completed`、`archived` |
+| interest_score | NUMERIC(4,3) | 关注程度，0–1，只用于安排回顾 |
+| last_discussed_at | TIMESTAMPTZ | 最近讨论时间 |
+| next_review_at | TIMESTAMPTZ | 下次评估时间 |
+| created_at | TIMESTAMPTZ | 创建时间 |
+| updated_at | TIMESTAMPTZ | 更新时间 |
+
+`attention_topic_memories` 连接主题和记忆，`(topic_id, memory_id)` 唯一。主题和记忆都必须属于同一个 Companion。删除记忆时只删除关联，主题保留。
 
 ------
 
@@ -828,16 +879,17 @@ LLM 负责理解、权衡和提出决策；Python 负责校验、约束和最终
 
 ### primary_action
 
+主行为与辅助行为使用同一组取值，与 Dialogue Engine 的基础行为一致：
+
 - `respond`
-- `ask`
 - `share`
-- `comfort`
-- `analyze`
-- `challenge`
-- `express_emotion`
-- `change_topic`
-- `end_conversation`
+- `ask`
+- `react`
+- `continue`
+- `close`
 - `quiet`
+
+`secondary_actions` 的每一项也只能取自该组。`quiet` 只作为主行为单独出现，不进入辅助行为。陪伴、分析、质疑写在本次 `motivation` 或表达意图中。情绪反应使用 `react`。话题切换写入 `topic`。结束当前交流使用 `close`。State 的持续动机仍使用 `comfort` 等动机类型，不进入本字段。
 
 Quiet 是合法决策，即使没有生成消息，也必须保留决策记录。
 
@@ -1326,7 +1378,7 @@ apps/server/
 | 状态结构   | 当前快照 + 历史事件             |
 | 决策结构   | Decision / Realization 分离     |
 | 任务可靠性 | BackgroundTask + Outbox 机制    |
-| 核心实体   | 17 张表                         |
+| 核心实体   | 20 张表                         |
 
 ## 14.2 实施前需要核实的事项
 
@@ -1344,7 +1396,7 @@ apps/server/
 
 # 十五、最终结论
 
-AI Companion 第一版数据库采用 **PostgreSQL + pgvector，17 张核心业务表，模块化组织，统一由 SQLAlchemy 2.x 和 Alembic 管理**。
+AI Companion 第一版数据库采用 **PostgreSQL + pgvector，20 张核心业务表，模块化组织，统一由 SQLAlchemy 2.x 和 Alembic 管理**。
 
 这套结构覆盖了第一版产品需要的完整数据生命周期：
 

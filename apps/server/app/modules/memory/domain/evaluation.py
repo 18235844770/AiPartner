@@ -81,11 +81,14 @@ def quality_score(
 
 
 _SYSTEM = (
-    "你只输出一个 JSON 对象，包含 evaluations 数组。"
+    "你只输出一个 JSON 对象，不要输出其他文字。"
+    "JSON 只能包含 evaluations。evaluations 是数组，没有可评分的记忆时为空数组。"
+    "每一项只能包含 memory_id、importance、stability、repetition、relatedness、freshness、confidence、relevance、reason。"
+    "不要增加其他字段。memory_id 必须使用给出的记忆编号。"
     "只为给出的记忆评分，不要编造新记忆，不要修改记忆正文。"
-    "importance、stability、repetition、relatedness、freshness、confidence、relevance 都是 0 到 1。"
+    "importance、stability、repetition、relatedness、freshness、confidence、relevance 都是 0 到 1 的数字。"
     "importance 是重要性，stability 是稳定性，repetition 是重复性，relatedness 是关联性，freshness 是时效性。"
-    "confidence 是这条记忆目前的可信度，relevance 是当前相关性。"
+    "confidence 是这条记忆目前的可信度，relevance 是当前相关性。reason 用一句话说明评分依据。"
     "单次出现不能单独降低重要性。用户一次情绪不能写成稳定性格。"
     "评分只供以后判断是否保留，不能把候选记忆升为正式记忆，也不能建议删除。"
     "没有给出的记忆不要评分。"

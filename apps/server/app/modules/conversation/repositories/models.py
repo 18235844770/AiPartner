@@ -15,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.modules.conversation.domain.enums import MESSAGE_STATUS_RECORDED, ContentType, ConversationStatus
+from app.modules.conversation.domain.enums import MESSAGE_STATUS_RECORDED, ContentType, ConversationStatus, MessageStatus
 from app.shared.database.base import Base
 from app.shared.database.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.shared.database.types import JSONB, UUID
@@ -25,6 +25,7 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "conversations"
     __table_args__ = (
         UniqueConstraint("user_id", "companion_id", "id", name="uq_conversations_user_companion_id"),
+        UniqueConstraint("companion_id", "id", name="uq_conversations_companion_id"),
         ForeignKeyConstraint(
             ["user_id", "companion_id"],
             ["companions.owner_user_id", "companions.id"],
@@ -72,6 +73,10 @@ class Message(UUIDPrimaryKeyMixin, Base):
         CheckConstraint("content_type = 'text'", name="content_type"),
         CheckConstraint("char_length(content) > 0", name="content_nonempty"),
         CheckConstraint("char_length(status) > 0", name="status_nonempty"),
+        CheckConstraint(
+            "status IN (" + ", ".join(f"'{item.value}'" for item in MessageStatus) + ")",
+            name="status_known",
+        ),
         CheckConstraint("sequence_number >= 1", name="sequence_number_positive"),
         Index(
             "uq_message_client_id",

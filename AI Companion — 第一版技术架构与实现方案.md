@@ -685,9 +685,9 @@ LLM 先输出结构化行为决策，Python 校验并确定最终执行行为，
 
 ```json
 {
-  "primary_action": "initiate_topic",
+  "primary_action": "share",
   "secondary_actions": [
-    "express_emotion"
+    "ask"
   ],
   "topic": "recent_user_experience",
   "motivation": "memory_driven",
@@ -697,7 +697,7 @@ LLM 先输出结构化行为决策，Python 校验并确定最终执行行为，
 }
 ```
 
-以上仅为结构示例，具体字段和枚举需要在 Dialogue Engine 实现阶段进一步定义。
+`primary_action` 与 `secondary_actions` 只使用 `respond`、`share`、`ask`、`react`、`continue`、`close`、`quiet`。`quiet` 只作为主行为单独出现。
 
 ## 11.3 Python 的职责
 

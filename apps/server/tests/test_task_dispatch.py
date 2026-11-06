@@ -46,9 +46,19 @@ def test_worker_entry_dispatches_and_executes() -> None:
     from app.modules.infrastructure.worker import HANDLERS, WorkerSettings
 
     assert WorkerSettings.functions[0].name == "execute_background_task"
-    assert set(HANDLERS) == {"memory_extract", "memory_evaluate"}
+    assert set(HANDLERS) == {
+        "memory_extract",
+        "memory_evaluate",
+        "memory_embedding",
+        "memory_relation",
+        "memory_summarize",
+        "state_maintenance",
+        "proactive_check",
+    }
     assert WorkerSettings.cron_jobs[0].coroutine.__name__ == "dispatch_outbox"
     assert WorkerSettings.cron_jobs[0].run_at_startup is True
+    assert WorkerSettings.cron_jobs[1].coroutine.__name__ == "schedule_state_maintenance"
+    assert WorkerSettings.cron_jobs[2].coroutine.__name__ == "schedule_proactive_checks"
 
 
 async def _create(task_key: str, scheduled_at: datetime, max_retries: int = 1) -> uuid.UUID:
@@ -181,6 +191,51 @@ async def test_duplicate_execution_runs_the_handler_once_and_failure_can_be_retr
         assert calls == [retry_key]
     finally:
         await _delete(retry_key)
+
+
+@pytest.mark.asyncio
+async def test_model_log_can_reference_the_running_task(database_ready: None) -> None:
+    from app.modules.infrastructure.api.schemas import RecordModelCallRequest
+    from app.modules.infrastructure.domain.enums import ModelCallStatus, ModelProvider, ModelTaskType
+    from app.modules.infrastructure.services.model_call_log_service import ModelCallLogService
+
+    task_key = f"dispatch-test-{uuid.uuid4()}"
+    task_id = await _create(task_key, datetime.now(UTC) - timedelta(seconds=1))
+
+    async def record_log(session: object, task: BackgroundTask) -> dict[str, object]:
+        del session
+        moment = datetime.now(UTC)
+        async with get_session_factory()() as other:
+            await ModelCallLogService().record(
+                other,
+                RecordModelCallRequest(
+                    background_task_id=task.id,
+                    trace_id=uuid.uuid4(),
+                    task_type=ModelTaskType.MEMORY,
+                    provider=ModelProvider.DEEPSEEK,
+                    model_name="deepseek-chat",
+                    status=ModelCallStatus.SUCCESS,
+                    latency_ms=1,
+                    created_at=moment,
+                    completed_at=moment,
+                ),
+            )
+        return {"applied": True}
+
+    try:
+        finished = await asyncio.wait_for(
+            TaskExecutor().execute(task_id, "worker-a", {"memory_extract": record_log}),
+            timeout=5,
+        )
+        assert finished is not None
+        assert finished.status == "completed"
+    finally:
+        async with get_engine().begin() as connection:
+            await connection.execute(
+                text("DELETE FROM model_call_logs WHERE background_task_id = :task_id"),
+                {"task_id": task_id},
+            )
+        await _delete(task_key)
 
 
 @pytest.mark.asyncio

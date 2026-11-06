@@ -151,6 +151,8 @@ Dialogue Engine 的基础行为类型为：
   安静              Quiet             当前不发送消息，或暂时不主动推进交流   没有值得表达的内容、等待、尊重用户空间
   -------------------------------------------------------------------------------------------------------------------
 
+接口、数据库和模型结构化输出使用同一组小写取值：`respond`、`share`、`ask`、`react`、`continue`、`close`、`quiet`。主行为与辅助行为都从这组取值中选择。`quiet` 只作为主行为，并且单独出现。
+
 ### 4.2 行为语义边界
 
 行为类型描述的是交流目的，不是固定话术。
@@ -821,8 +823,8 @@ Schema。字段可根据实现调整。
 ``` json
 {
   "should_send": true,
-  "primary_action": "React",
-  "secondary_actions": ["Ask"],
+  "primary_action": "react",
+  "secondary_actions": ["ask"],
   "motivation": "respond_to_user_sharing",
   "topic_id": "topic_123",
   "topic_transition": "continue",
@@ -841,8 +843,8 @@ Schema。字段可根据实现调整。
 说明：
 
 -   `should_send`：是否发送消息；false 可对应 Quiet 或延迟。
--   `primary_action`：本轮主要行为。
--   `secondary_actions`：辅助行为列表。
+-   `primary_action`：本轮主要行为，取值为 `respond`、`share`、`ask`、`react`、`continue`、`close`、`quiet`。
+-   `secondary_actions`：辅助行为列表，取值与主行为相同；`quiet` 不出现在此列表。
 -   `motivation`：本轮主要交流动机。
 -   `topic_id`：关联话题；新话题可在后续创建。
 -   `topic_transition`：话题处理意图，例如

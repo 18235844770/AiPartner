@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.conversation.domain.enums import SenderType
 from app.modules.conversation.services.conversation_service import ConversationService
+from app.modules.dialogue.services.proactive_schedule import schedule_proactive_event
 from app.modules.infrastructure.api.schemas import CreateBackgroundTaskRequest
 from app.modules.infrastructure.domain.enums import BackgroundTaskType, ModelConfigKey
 from app.modules.infrastructure.services.background_task_service import BackgroundTaskService
@@ -21,11 +22,12 @@ from app.modules.memory.domain.enums import (
 )
 from app.modules.memory.domain.extraction import (
     ExtractedMemory,
-    ExtractionCategory,
     ExtractionOutput,
     MemoryWriteAction,
     extraction_messages,
 )
+from app.modules.memory.domain.placement import formal_memory_type
+from app.modules.memory.services.context_service import MemoryContextService
 from app.modules.memory.services.memory_service import MemoryService
 from app.modules.model_adapter.domain.messages import ChatMessage
 from app.modules.model_adapter.services.model_adapter import ModelCallScope
@@ -47,11 +49,13 @@ class MemoryExtractionService:
     def __init__(
         self,
         memories: MemoryService | None = None,
+        contexts: MemoryContextService | None = None,
         conversations: ConversationService | None = None,
         adapter: ExtractionModel | None = None,
         tasks: BackgroundTaskService | None = None,
     ) -> None:
         self._memories = memories or MemoryService()
+        self._contexts = contexts or MemoryContextService()
         self._conversations = conversations or ConversationService()
         self._adapter = adapter if adapter is not None else _default_adapter()
         self._tasks = tasks or BackgroundTaskService()
@@ -70,9 +74,9 @@ class MemoryExtractionService:
         if message.conversation_id != conversation_id:
             raise ValueError("消息不属于该会话")
         if message.sender_type != SenderType.USER.value:
-            return {"created": 0, "supplemented": 0, "corrected": 0, "ignored": 0, "skipped": True}
+            return {"created": 0, "supplemented": 0, "corrected": 0, "ignored": 0, "working": 0, "skipped": True}
         if await self._memories.has_message_evidence(session, message_id):
-            return {"created": 0, "supplemented": 0, "corrected": 0, "ignored": 0, "skipped": True}
+            return {"created": 0, "supplemented": 0, "corrected": 0, "ignored": 0, "working": 0, "skipped": True}
         existing = await self._existing(session, user_id, companion_id)
         output = await self._adapter.complete_structured(
             ModelConfigKey.MEMORY,
@@ -86,14 +90,30 @@ class MemoryExtractionService:
                 background_task_id=task_id,
             ),
         )
-        counts = {"created": 0, "supplemented": 0, "corrected": 0, "ignored": 0}
+        counts = {"created": 0, "supplemented": 0, "corrected": 0, "ignored": 0, "working": 0}
         known = {item["id"] for item in existing}
         for item in output.memories:
-            applied = await self._apply(session, user_id, companion_id, message_id, item, known)
+            applied = await self._apply(
+                session,
+                user_id,
+                companion_id,
+                conversation_id,
+                message_id,
+                item,
+                known,
+            )
             counts[applied] += 1
         written = counts["created"] + counts["supplemented"] + counts["corrected"]
         if written:
             await self._schedule_evaluation(session, user_id, companion_id, conversation_id, message_id)
+            await self._schedule_relation(session, user_id, companion_id, conversation_id, message_id)
+            await schedule_proactive_event(
+                session,
+                user_id=user_id,
+                companion_id=companion_id,
+                event_key=f"message:{message_id}",
+                tasks=self._tasks,
+            )
         logger.info("extracted memories from message %s: %s", message_id, counts)
         return {**counts, "skipped": False}
 
@@ -112,6 +132,32 @@ class MemoryExtractionService:
                 companion_id=companion_id,
                 task_type=BackgroundTaskType.MEMORY_EVALUATE,
                 task_key=f"memory-evaluate:{message_id}",
+                queue_name="memory",
+                payload={
+                    "user_id": str(user_id),
+                    "message_id": str(message_id),
+                    "conversation_id": str(conversation_id),
+                },
+                max_retries=2,
+                scheduled_at=datetime.now(UTC),
+            ),
+        )
+
+    async def _schedule_relation(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        message_id: uuid.UUID,
+    ) -> None:
+        await self._tasks.create(
+            session,
+            CreateBackgroundTaskRequest(
+                user_id=user_id,
+                companion_id=companion_id,
+                task_type=BackgroundTaskType.MEMORY_RELATION,
+                task_key=f"memory-relation:{message_id}",
                 queue_name="memory",
                 payload={
                     "user_id": str(user_id),
@@ -150,10 +196,21 @@ class MemoryExtractionService:
         session: AsyncSession,
         user_id: uuid.UUID,
         companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
         message_id: uuid.UUID,
         item: ExtractedMemory,
         known: set[str],
     ) -> str:
+        if formal_memory_type(item.memory_type, item.category) is None and item.action == MemoryWriteAction.CREATE:
+            await self._contexts.add_open_thread(
+                session,
+                user_id,
+                companion_id,
+                conversation_id,
+                item.content,
+                message_id,
+            )
+            return "working"
         target = str(item.target_memory_id) if item.target_memory_id is not None else None
         if item.action == MemoryWriteAction.IGNORE or (
             item.action in {MemoryWriteAction.SUPPLEMENT, MemoryWriteAction.CORRECT} and target not in known
@@ -219,9 +276,7 @@ class MemoryExtractionService:
 
 
 def _candidate(message_id: uuid.UUID, item: ExtractedMemory) -> CreateMemoryRequest:
-    memory_type = item.memory_type
-    if item.category == ExtractionCategory.EMOTION and memory_type != MemoryType.EPISODIC:
-        memory_type = MemoryType.EPISODIC
+    memory_type = formal_memory_type(item.memory_type, item.category) or MemoryType.SEMANTIC
     explicit = item.explicit
     return CreateMemoryRequest(
         memory_type=memory_type,

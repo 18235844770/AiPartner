@@ -6,12 +6,18 @@ from app.modules.model_adapter.domain.messages import ChatMessage
 
 _DECISION_SYSTEM = (
     "你只输出一个 JSON 对象，不要输出其他文字。"
+    "JSON 只能包含 should_send、primary_action、secondary_actions、motivation、topic、confidence、reasoning_summary。"
+    "should_send 是布尔值。secondary_actions 是字符串数组，可以是空数组。"
+    "motivation 是对象，包含 primary 和 summary。topic 是对象，包含 topic_id 和 transition。"
+    "transition 只能是 continue、new_topic、close、none 或 null。confidence 是 0 到 1 的数字。"
+    "不要增加其他字段。"
     "primary_action 只能是 respond、share、ask、react、continue、close、quiet 之一。"
     "只能有一个主要行为。Quiet 不能搭配其他行为，并且 should_send 必须为 false。"
     "不要编造没有提供的经历或记忆，不要威胁、羞辱或控制用户。"
     "immediate_facts 只是当前用户消息里的即时事实，不是长期记忆。"
     "memories 里 is_inference 为 true 的内容是推断，不能写成用户明确说过的事实。"
     "候选记忆可以参考，但它还不是正式长期记忆。"
+    "working_memory 只描述当前会话，attention_topics 是长期关注，二者都不是用户明确说过的事实。"
 )
 
 _REALIZATION_SYSTEM = (
@@ -36,6 +42,8 @@ def decision_messages(
     repair: bool,
     memories: list[dict[str, object]] | None = None,
     immediate_facts: list[dict[str, str]] | None = None,
+    working_memory: dict[str, object] | None = None,
+    attention_topics: list[dict[str, object]] | None = None,
 ) -> list[ChatMessage]:
     context = {
         "persona": {
@@ -51,6 +59,8 @@ def decision_messages(
             "proactive_allowed": proactive_allowed,
         },
         "immediate_facts": immediate_facts or [],
+        "working_memory": working_memory,
+        "attention_topics": attention_topics or [],
         "memories": memories or [],
         "recent_messages": recent_messages[-RECENT_MESSAGE_LIMIT:],
     }

@@ -499,6 +499,8 @@ Python 保证系统可控和可调试；LLM 负责复杂情境理解和灵活判
 -   Close
 -   Quiet
 
+接口和数据库使用同一组小写取值：`respond`、`share`、`ask`、`react`、`continue`、`close`、`quiet`。
+
 规则：
 
 -   主行为决定本轮交流的主要目的。

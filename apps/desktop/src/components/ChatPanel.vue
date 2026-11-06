@@ -2,7 +2,7 @@
 import { nextTick, ref, watch } from "vue";
 
 import { useChat } from "../composables/useChat";
-import { conversationStatusLabel, conversationTitle, formatTimestamp, senderLabel } from "../domain/presentation";
+import { conversationStatusLabel, conversationTitle, formatTimestamp, messageStateLabel, senderLabel } from "../domain/presentation";
 
 const props = defineProps<{
   apiBaseUrl: string;
@@ -117,14 +117,15 @@ function onComposerKeydown(event: KeyboardEvent): void {
           v-for="message in chat.messages.value"
           :key="message.id"
           class="bubble"
-          :class="message.sender_type"
+          :class="[message.sender_type, message.status]"
         >
           <p class="bubble-meta">
             {{ senderLabel(message.sender_type) }}
+            <template v-if="messageStateLabel(message.status)"> · {{ messageStateLabel(message.status) }}</template>
             · {{ formatTimestamp(message.created_at) }}
-            · #{{ message.sequence_number }}
+            <template v-if="message.sequence_number < Number.MAX_SAFE_INTEGER"> · #{{ message.sequence_number }}</template>
           </p>
-          <p class="bubble-content">{{ message.content }}</p>
+          <p v-if="message.content" class="bubble-content">{{ message.content }}</p>
         </article>
       </div>
 
@@ -137,10 +138,13 @@ function onComposerKeydown(event: KeyboardEvent): void {
           @keydown="onComposerKeydown"
         ></textarea>
         <div class="composer-bar">
-          <p class="muted">Enter 发送，Shift + Enter 换行。当前写入用户消息。</p>
-          <button class="primary" type="submit" :disabled="!chat.selected.value || chat.sending.value || !messageDraft.trim()">
-            {{ chat.sending.value ? "发送中" : "发送" }}
-          </button>
+          <p class="muted">Enter 发送，Shift + Enter 换行。</p>
+          <div class="composer-actions">
+            <button v-if="chat.sending.value" class="secondary" type="button" @click="chat.stop()">停止</button>
+            <button class="primary" type="submit" :disabled="!chat.selected.value || chat.sending.value || !messageDraft.trim()">
+              {{ chat.sending.value ? "发送中" : "发送" }}
+            </button>
+          </div>
         </div>
       </form>
       <p v-if="chat.error.value" class="error">{{ chat.error.value }}</p>

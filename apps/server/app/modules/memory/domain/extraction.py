@@ -96,7 +96,7 @@ _SYSTEM = (
     "explicit 仅当用户直接说出该事实时为 true，推测必须为 false。"
     "不要把一次情绪写成稳定的性格判断。没有值得保留的信息时返回空数组。"
     "category 只能是 fact、preference、habit、plan、event、relationship、opinion、emotion、open_loop、theme。"
-    "memory_type 只能是 working、semantic、episodic。"
+    "memory_type 只能是 semantic、episodic。未完成事项使用 category=open_loop，不要写成长期记忆。"
 )
 
 _EXISTING_LIMIT = 20
