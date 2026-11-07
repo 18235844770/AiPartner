@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     deepseek_timeout_seconds: float = Field(default=60, gt=0)
     deepseek_max_retries: int = Field(default=1, ge=0)
     embedding_model_name: str = Field(default="BAAI/bge-m3", min_length=1, max_length=64)
+    model_log_detail: str = ""
+    model_log_sample_rate: float | None = Field(default=None, ge=0, le=1)
+    model_log_retention_days: int = Field(default=14, ge=1)
+    model_log_expose_snapshots: bool = False
 
 
 @lru_cache

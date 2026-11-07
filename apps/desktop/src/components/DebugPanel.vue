@@ -117,6 +117,10 @@ function tokenText(input: number | null, output: number | null): string {
           <h3>表达偏好</h3>
           <pre>{{ formatRecord(persona.current_version.communication_preferences) }}</pre>
         </article>
+        <article class="record">
+          <h3>人格档案</h3>
+          <pre>{{ formatRecord(persona.current_version.archive) }}</pre>
+        </article>
       </div>
     </template>
 

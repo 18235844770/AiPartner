@@ -1604,6 +1604,10 @@ export interface components {
             communication_preferences: {
                 [key: string]: unknown;
             };
+            /** Archive */
+            archive: {
+                [key: string]: unknown;
+            };
             /** Change Reason */
             change_reason: string;
             /**

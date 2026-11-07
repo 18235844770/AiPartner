@@ -3,6 +3,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.persona.domain.archive import PersonaArchive
 from app.modules.persona.domain.enums import MbtiType
 
 _TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "data" / "persona_templates.json"
@@ -15,6 +16,7 @@ class PersonaTemplate(BaseModel):
     title: str = Field(min_length=1)
     summary: str = Field(min_length=1)
     expression: str = Field(min_length=1)
+    archive: PersonaArchive
 
 
 def load_persona_templates() -> dict[MbtiType, PersonaTemplate]:

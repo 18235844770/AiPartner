@@ -125,11 +125,13 @@ async def _insert_persona(session, companion_id: uuid.UUID) -> tuple[uuid.UUID, 
             """
             INSERT INTO persona_versions (
                 id, persona_profile_id, version_number, mbti_type,
-                core_traits, behavior_traits, communication_preferences, change_reason
+                core_traits, behavior_traits, communication_preferences, archive, change_reason
             )
             VALUES (
                 :id, :persona_profile_id, 1, 'INFJ',
-                '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '初始人格'
+                '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                '{"identity":"测试身份","background":"测试背景","interests":["主题"],"viewpoints":["观点"],"values":["边界"],"thinking_habits":["先看依据"],"communication":"直接说","attention":["未完成的判断"]}'::jsonb,
+                '初始人格'
             )
             """
         ),

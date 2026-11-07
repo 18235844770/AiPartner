@@ -25,6 +25,8 @@ def test_initialization_uses_an_explicit_type_instead_of_random() -> None:
     assert version.version_number == 1
     assert version.core_traits["title"] == "战略型"
     assert version.change_reason == "初始人格"
+    assert "陪伴者" in str(version.archive["identity"])
+    assert version.archive["interests"]
 
 
 def test_random_choice_stays_inside_the_six_types() -> None:

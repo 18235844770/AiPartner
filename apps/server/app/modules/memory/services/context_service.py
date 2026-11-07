@@ -536,6 +536,7 @@ def _working_context(row: WorkingMemory) -> dict[str, object]:
     return {
         "summary": row.summary,
         "current_topic": row.current_topic,
+        "version": row.version,
         "open_threads": list(row.open_threads),
         "attention_topic_id": str(row.attention_topic_id) if row.attention_topic_id is not None else None,
     }

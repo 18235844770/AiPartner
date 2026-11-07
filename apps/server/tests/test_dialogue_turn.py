@@ -13,7 +13,7 @@ from app.modules.dialogue.api.turn_router import get_turn_service
 from app.modules.dialogue.domain.context import decision_messages, final_send
 from app.modules.dialogue.domain.decision import DecisionMotivation, DecisionTopic
 from app.modules.dialogue.domain.enums import DialogueAction, TopicTransition
-from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion
+from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion, SelfMotivation, UserNeed
 from app.modules.dialogue.services.turn_service import DialogueTurnService
 from app.modules.model_adapter.domain.errors import ModelOutputError, ModelTimeoutError
 from app.modules.model_adapter.domain.messages import TextCompletion
@@ -37,7 +37,9 @@ def test_decision_prompt_omits_relationship_scores_and_does_not_invent_memories(
     assert "closeness" not in body
     assert "trust" not in body
     assert "attachment" not in body
-    assert '"memories": []' in body
+    assert '"acquired_memories": []' in body
+    assert "陪伴者" in body
+    assert "Dialogue Policy" in messages[0].content
     assert "今天先这样" in body
     assert "上一次输出不符合结构" in messages[2].content
     assert "invalid output" not in messages[2].content
@@ -109,6 +111,12 @@ def _suggestion(action: DialogueAction, should_send: bool, secondary: list[Dialo
         primary_action=action,
         secondary_actions=secondary or [],
         motivation=DecisionMotivation(primary="回应用户当前表达"),
+        user_need=UserNeed(summary="用户在说当前的感受"),
+        self_motivation=SelfMotivation(
+            interest="没有必须接上的个人兴趣",
+            viewpoint="先接住这句话",
+            desire_to_express="回应，不追加问题",
+        ),
         topic=DecisionTopic(transition=TopicTransition.CONTINUE),
         confidence=Decimal("0.500"),
         reasoning_summary="先确定行为，再决定是否发送",
@@ -205,6 +213,12 @@ async def test_quiet_does_not_generate_a_message(database_ready: None) -> None:
         assert decision.json()["result_message_id"] is None
         messages = await client.get(scope.messages)
         assert [item["sender_type"] for item in messages.json()] == ["user"]
+        state = await client.get(scope.state)
+        assert state.json()["version"] == 2
+        assert state.json()["emotion"]["cause_summary"] == "这一轮选择不发消息"
+        assert state.json()["motivation"]["primary"] == "rest"
+        assert state.json()["interaction"]["last_companion_message_at"] is None
+        assert state.json()["relationship"]["closeness"] == 0
     assert [name for name, _messages in adapter.calls] == ["structured"]
 
 
@@ -232,11 +246,29 @@ async def test_respond_keeps_the_decided_action_and_uses_the_realization(databas
         assert messages.json()[1]["status"] == "completed"
         assert messages.json()[1]["id"] == events[1][1]["message_id"]
         state = await client.get(scope.state)
-        assert state.json()["version"] == 1
+        body = state.json()
+        assert body["version"] == 2
+        assert body["emotion"]["primary"] == "attentive"
+        assert body["emotion"]["cause_summary"] == "这一轮在听用户说话"
+        assert body["motivation"]["primary"] == "listen"
+        assert body["motivation"]["secondary"] == ["connect"]
+        assert body["interaction"]["waiting_for_user"] is True
+        assert body["interaction"]["consecutive_unanswered_messages"] == 1
+        assert body["interaction"]["last_user_response_at"] is not None
+        assert body["interaction"]["last_companion_message_at"] is not None
+        assert body["interaction"]["proactive_allowed"] is False
+        assert body["relationship"]["closeness"] == 0
+        assert body["relationship"]["summary"] == "已经开始交流，关系程度仍保持原来的判断"
+        events_response = await client.get(f"{scope.state}/events")
+        assert events_response.status_code == 200
+        recorded = [item for item in events_response.json() if item["source_type"] == "dialogue_decision"]
+        assert len(recorded) == 1
+        assert recorded[0]["dialogue_decision_id"] == events[0][1]["turn_id"]
     assert [name for name, _messages in adapter.calls] == ["structured", "text"]
     sent = adapter.calls[0][1][1].content
     assert "closeness" not in sent
-    assert '"memories": []' in sent
+    assert '"acquired_memories": []' in sent
+    assert "陪伴者" in sent
     assert '"source": "current_message"' in sent
     assert "今天有点累" in sent
 

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.infrastructure.domain.enums import BackgroundTaskStatus
@@ -134,3 +134,25 @@ class ModelCallLogRepository:
             .order_by(ModelCallLog.created_at.asc())
         )
         return list((await session.execute(statement)).scalars().all())
+
+    async def get(self, session: AsyncSession, log_id: uuid.UUID) -> ModelCallLog | None:
+        return await session.get(ModelCallLog, log_id)
+
+    async def attach_decision(self, session: AsyncSession, trace_id: uuid.UUID, decision_id: uuid.UUID) -> None:
+        await session.execute(
+            update(ModelCallLog)
+            .where(ModelCallLog.trace_id == trace_id, ModelCallLog.dialogue_decision_id.is_(None))
+            .values(dialogue_decision_id=decision_id)
+        )
+
+    async def expire_details(self, session: AsyncSession, now: datetime) -> None:
+        await session.execute(
+            update(ModelCallLog)
+            .where(ModelCallLog.detail_retained_until.is_not(None), ModelCallLog.detail_retained_until < now)
+            .values(
+                prompt_snapshot=None,
+                messages_snapshot=None,
+                response_snapshot=None,
+                detail_retained_until=None,
+            )
+        )

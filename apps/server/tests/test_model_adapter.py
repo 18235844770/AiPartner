@@ -39,7 +39,8 @@ class _Logs:
     def __init__(self) -> None:
         self.records: list[object] = []
 
-    async def record(self, session: object, data: object) -> object:
+    async def record(self, session: object, data: object, detail: object | None = None) -> object:
+        del detail
         del session
         self.records.append(data)
         return data

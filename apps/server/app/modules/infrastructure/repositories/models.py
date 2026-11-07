@@ -128,7 +128,7 @@ class BackgroundTask(UUIDPrimaryKeyMixin, Base):
 
 
 class ModelCallLog(UUIDPrimaryKeyMixin, Base):
-    """不保存完整 Prompt 和完整模型输出。"""
+    """元数据始终保存。开发环境额外保存脱敏后的请求和响应，并设保留期限。"""
 
     __tablename__ = "model_call_logs"
     __table_args__ = (
@@ -195,5 +195,12 @@ class ModelCallLog(UUIDPrimaryKeyMixin, Base):
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    returned_model_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    parameters: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    prompt_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
+    messages_snapshot: Mapped[list[object] | None] = mapped_column(JSONB, nullable=True)
+    response_snapshot: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    context_versions: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    detail_retained_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

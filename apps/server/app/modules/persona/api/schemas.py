@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.modules.persona.domain.archive import PersonaArchive
 from app.modules.persona.domain.enums import MbtiType
 
 
@@ -19,6 +20,7 @@ class CreatePersonaVersionRequest(BaseModel):
     core_traits: dict[str, object] | None = None
     behavior_traits: dict[str, object] | None = None
     communication_preferences: dict[str, object] | None = None
+    archive: PersonaArchive | None = None
 
     @field_validator("change_reason")
     @classmethod
@@ -44,6 +46,7 @@ class PersonaVersionResponse(BaseModel):
     core_traits: dict[str, object]
     behavior_traits: dict[str, object]
     communication_preferences: dict[str, object]
+    archive: dict[str, object]
     change_reason: str
     created_at: datetime
 

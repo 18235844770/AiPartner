@@ -125,6 +125,24 @@ class RecordModelCallRequest(BaseModel):
         return self
 
 
+class ModelCallSnapshotResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    trace_id: uuid.UUID
+    task_type: ModelTaskType
+    model_name: str
+    returned_model_name: str | None
+    parameters: dict[str, object] | None
+    prompt_snapshot: str | None
+    messages_snapshot: list[object] | None
+    response_snapshot: dict[str, object] | None
+    context_versions: dict[str, object] | None
+    input_tokens: int | None
+    output_tokens: int | None
+    detail_retained_until: datetime | None
+
+
 class ModelCallLogResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

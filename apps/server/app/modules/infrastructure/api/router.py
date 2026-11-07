@@ -9,6 +9,7 @@ from app.modules.infrastructure.api.schemas import (
     CreateBackgroundTaskRequest,
     CreateModelConfigRequest,
     ModelCallLogResponse,
+    ModelCallSnapshotResponse,
     ModelConfigResponse,
     RecordModelCallRequest,
     RollbackModelConfigRequest,
@@ -16,7 +17,11 @@ from app.modules.infrastructure.api.schemas import (
 )
 from app.modules.infrastructure.domain.enums import ModelConfigKey
 from app.modules.infrastructure.services.background_task_service import BackgroundTaskService, to_task_response
-from app.modules.infrastructure.services.model_call_log_service import ModelCallLogService, to_log_response
+from app.modules.infrastructure.services.model_call_log_service import (
+    ModelCallLogService,
+    to_log_response,
+    to_snapshot_response,
+)
 from app.modules.infrastructure.services.model_config_service import ModelConfigService, to_config_response
 from app.shared.database.session import get_session
 
@@ -84,6 +89,17 @@ async def list_model_calls(
 ) -> list[ModelCallLogResponse]:
     logs = await log_service.list_by_trace(session, trace_id)
     return [to_log_response(log) for log in logs]
+
+
+@scope_router.get("/model-call-logs/{log_id}", response_model=ModelCallSnapshotResponse)
+async def get_companion_model_call_snapshot(
+    user_id: uuid.UUID,
+    companion_id: uuid.UUID,
+    log_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+) -> ModelCallSnapshotResponse:
+    log = await log_service.get_snapshot(session, user_id, companion_id, log_id)
+    return to_snapshot_response(log)
 
 
 @scope_router.get("/model-call-logs", response_model=list[ModelCallLogResponse])

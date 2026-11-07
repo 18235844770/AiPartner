@@ -36,3 +36,19 @@ export function createCompanion(
     body: JSON.stringify(body),
   });
 }
+
+export async function initializeCompanionBasics(
+  apiBaseUrl: string,
+  userId: string,
+  companionId: string,
+): Promise<void> {
+  const base = `${usersUrl(apiBaseUrl)}/${userId}/companions/${companionId}`;
+  await requestJson(`${base}/persona`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  await requestJson(`${base}/state`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}

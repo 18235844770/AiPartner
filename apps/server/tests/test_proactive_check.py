@@ -15,7 +15,7 @@ from app.modules.dialogue.domain.proactive import (
     ProactiveMessage,
     frequency_block,
 )
-from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion
+from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion, SelfMotivation, UserNeed
 from app.modules.dialogue.services.proactive import ProactiveCheckService
 from app.modules.dialogue.services.turn_service import DialogueTurnService
 from app.modules.infrastructure.api.schemas import CreateBackgroundTaskRequest
@@ -97,6 +97,12 @@ def _share() -> ModelDecisionSuggestion:
         primary_action=DialogueAction.SHARE,
         secondary_actions=[],
         motivation=DecisionMotivation(primary="回应用户当前表达"),
+        user_need=UserNeed(summary="没有新的用户请求"),
+        self_motivation=SelfMotivation(
+            interest="有一件小事想说",
+            viewpoint="现在说比较合适",
+            desire_to_express="分享这一件小事",
+        ),
         topic=DecisionTopic(transition=TopicTransition.CONTINUE),
         confidence=Decimal("0.500"),
         reasoning_summary="想分享一件小事",

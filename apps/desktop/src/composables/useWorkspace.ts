@@ -5,6 +5,7 @@ import {
   createCompanion,
   createUser,
   getUser,
+  initializeCompanionBasics,
   listCompanions,
   type CompanionResponse,
   type UserResponse,
@@ -126,6 +127,7 @@ export function useWorkspace() {
         description: optionalText(draft.companionDescription),
         is_default: draft.companionIsDefault,
       });
+      await initializeCompanionBasics(apiBaseUrl, nextUser.id, created.id);
       const items = await listCompanions(apiBaseUrl, nextUser.id);
       applyCompanions(items, created.id);
     } catch (caught) {
@@ -148,6 +150,7 @@ export function useWorkspace() {
         description: optionalText(draft.description),
         is_default: draft.isDefault,
       });
+      await initializeCompanionBasics(apiBaseUrl, current.id, created.id);
       const items = await listCompanions(apiBaseUrl, current.id);
       applyCompanions(items, created.id);
     } catch (caught) {

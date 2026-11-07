@@ -82,6 +82,7 @@ class PersonaService:
                     current.communication_preferences,
                     data.communication_preferences,
                 ),
+                archive=current.archive if data.archive is None else data.archive.dump(),
                 change_reason=data.change_reason,
             )
             await self._personas.add_version(session, version)
@@ -118,9 +119,18 @@ class PersonaService:
             persona_profile_id=profile_id,
             version_number=1,
             mbti_type=template.mbti_type.value,
-            core_traits={"title": template.title, "summary": template.summary},
-            behavior_traits={},
-            communication_preferences={"summary": template.expression},
+            core_traits={
+                "title": template.title,
+                "summary": template.summary,
+                "values": list(template.archive.values),
+                "thinking_habits": list(template.archive.thinking_habits),
+            },
+            behavior_traits={"attention": list(template.archive.attention)},
+            communication_preferences={
+                "summary": template.expression,
+                "communication": template.archive.communication,
+            },
+            archive=template.archive.dump(),
             change_reason=INITIAL_CHANGE_REASON,
         )
         return profile, version
@@ -147,6 +157,7 @@ def to_version_response(version: PersonaVersion) -> PersonaVersionResponse:
         core_traits=version.core_traits,
         behavior_traits=version.behavior_traits,
         communication_preferences=version.communication_preferences,
+        archive=dict(version.archive),
         change_reason=version.change_reason,
         created_at=version.created_at,
     )

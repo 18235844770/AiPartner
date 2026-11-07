@@ -31,20 +31,24 @@ from app.modules.dialogue.domain.suggestion import (
     proactive_fallback,
     user_fallback,
 )
+from app.modules.dialogue.domain.turn_state import plan_turn_state
 from app.modules.dialogue.repositories.models import DialogueDecision
 from app.modules.dialogue.services.dialogue_service import DialogueService
 from app.modules.infrastructure.api.schemas import CreateBackgroundTaskRequest
 from app.modules.infrastructure.domain.enums import BackgroundTaskType, ModelConfigKey
 from app.modules.infrastructure.services.background_task_service import BackgroundTaskService
+from app.modules.infrastructure.services.model_call_log_service import ModelCallLogService
 from app.modules.model_adapter.domain.errors import ModelAdapterError, ModelOutputError
 from app.modules.memory.services.context_service import MemoryContextService
 from app.modules.memory.services.retrieval import MemoryRetrievalService
 from app.modules.model_adapter.domain.messages import ChatMessage, TextCompletion
 from app.modules.model_adapter.services.model_adapter import ModelCallScope
 from app.modules.persona.services.persona_service import PersonaService
-from app.modules.state.domain.enums import InteractionMode
-from app.modules.state.domain.snapshots import EmotionState, InteractionState, RelationshipState
+from app.modules.state.api.schemas import ApplyStateChangeRequest
+from app.modules.state.domain.enums import InteractionMode, StateSourceType
+from app.modules.state.domain.snapshots import EmotionState, InteractionState, MotivationState, RelationshipState
 from app.modules.state.services.state_service import StateService
+from app.shared.exceptions.errors import AppError
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +87,8 @@ class TurnContext:
     immediate_facts: list[dict[str, str]]
     working_memory: dict[str, object] | None = None
     attention_topics: list[dict[str, object]] | None = None
+    archive: dict[str, object] | None = None
+    versions: dict[str, str] | None = None
 
     def decision_input(self, repair: bool) -> list[ChatMessage]:
         return decision_messages(
@@ -100,6 +106,27 @@ class TurnContext:
             immediate_facts=self.immediate_facts,
             working_memory=self.working_memory,
             attention_topics=self.attention_topics,
+            archive=self.archive,
+            versions=self.versions,
+        )
+
+    def realization_input(self, suggestion: ModelDecisionSuggestion) -> list[ChatMessage]:
+        return realization_messages(
+            suggestion,
+            self.recent_messages,
+            self.memories,
+            self.immediate_facts,
+            mbti_type=self.mbti_type,
+            core_traits=self.core_traits,
+            communication_preferences=self.communication_preferences,
+            emotion_primary=self.emotion_primary,
+            emotion_cause=self.emotion_cause,
+            relationship_summary=self.relationship_summary,
+            interaction_mode=self.interaction_mode,
+            proactive_allowed=self.proactive_allowed,
+            working_memory=self.working_memory,
+            archive=self.archive,
+            versions=self.versions,
         )
 
 
@@ -114,6 +141,7 @@ class DialogueTurnService:
         tasks: BackgroundTaskService | None = None,
         retrieval: MemoryRetrievalService | None = None,
         contexts: MemoryContextService | None = None,
+        logs: ModelCallLogService | None = None,
     ) -> None:
         self._dialogue = dialogue or DialogueService()
         self._conversations = conversations or ConversationService()
@@ -123,6 +151,7 @@ class DialogueTurnService:
         self._tasks = tasks or BackgroundTaskService()
         self._retrieval = retrieval or MemoryRetrievalService()
         self._contexts = contexts or MemoryContextService()
+        self._logs = logs or ModelCallLogService()
 
     async def iter_user_turn(
         self,
@@ -195,6 +224,7 @@ class DialogueTurnService:
                 user_id=user_id,
                 companion_id=companion_id,
                 conversation_id=conversation_id,
+                context_versions=context.versions or {},
             )
             suggestion, validation = await self._choose(context, scope, user_fallback)
             action, should_send = final_send(suggestion)
@@ -212,6 +242,7 @@ class DialogueTurnService:
                 decision_id=turn_id,
             )
             decision_id = decision.id
+            await self._link_calls(trace_id, decision.id)
             await self._contexts.record_topic_transition(
                 session,
                 user_id,
@@ -234,6 +265,19 @@ class DialogueTurnService:
                     companion_id,
                     conversation_id,
                     appended.message.id,
+                )
+                await self._record_executed_state(
+                    session,
+                    user_id,
+                    companion_id,
+                    conversation_id,
+                    decision.id,
+                    appended.message.id,
+                    suggestion,
+                    action,
+                    should_send,
+                    validation,
+                    user_spoke=True,
                 )
                 settled = True
                 yield TurnCompleted(turn_id=turn_id, outcome="quiet", sequence=sequence.next())
@@ -317,6 +361,19 @@ class DialogueTurnService:
                 conversation_id,
                 appended.message.id,
             )
+            await self._record_executed_state(
+                session,
+                user_id,
+                companion_id,
+                conversation_id,
+                decision.id,
+                appended.message.id,
+                suggestion,
+                action,
+                should_send,
+                validation,
+                user_spoke=True,
+            )
             settled = True
             yield MessageCompleted(
                 turn_id=turn_id,
@@ -388,12 +445,7 @@ class DialogueTurnService:
         context: TurnContext,
         scope: ModelCallScope,
     ) -> AsyncIterator[str]:
-        messages = realization_messages(
-            suggestion,
-            context.recent_messages,
-            context.memories,
-            context.immediate_facts,
-        )
+        messages = context.realization_input(suggestion)
         stream_text = getattr(self._adapter, "stream_text", None)
         if stream_text is not None:
             async for piece in stream_text(ModelConfigKey.CONVERSATION, messages, scope):
@@ -543,6 +595,7 @@ class DialogueTurnService:
                 user_id=user_id,
                 companion_id=companion_id,
                 conversation_id=conversation_id,
+                context_versions=context.versions or {},
             )
             suggestion, validation = await self._choose(context, scope, proactive_fallback)
             action, should_send = final_send(suggestion)
@@ -564,6 +617,7 @@ class DialogueTurnService:
                 decision_id=turn_id,
             )
             decision_id = decision.id
+            await self._link_calls(trace_id, decision.id)
             if conversation_id is not None:
                 await self._contexts.record_topic_transition(
                     session,
@@ -574,6 +628,19 @@ class DialogueTurnService:
                     suggestion.topic.topic_id,
                 )
             if not should_send:
+                await self._record_executed_state(
+                    session,
+                    user_id,
+                    companion_id,
+                    conversation_id,
+                    decision.id,
+                    None,
+                    suggestion,
+                    action,
+                    should_send,
+                    validation,
+                    user_spoke=False,
+                )
                 settled = True
                 yield TurnCompleted(turn_id=turn_id, outcome="quiet", sequence=sequence.next())
                 return
@@ -658,6 +725,19 @@ class DialogueTurnService:
                     conversation_id,
                     message_id,
                 )
+            await self._record_executed_state(
+                session,
+                user_id,
+                companion_id,
+                conversation_id,
+                decision.id,
+                message_id,
+                suggestion,
+                action,
+                should_send,
+                validation,
+                user_spoke=False,
+            )
             settled = True
             yield MessageCompleted(
                 turn_id=turn_id,
@@ -700,6 +780,7 @@ class DialogueTurnService:
         if conversation_id is not None:
             working = await self._contexts.working_for_turn(session, user_id, companion_id, conversation_id)
         topics = await self._contexts.active_attention_context(session, user_id, companion_id)
+        working_version = None if working is None else working.get("version")
         return TurnContext(
             mbti_type=version.mbti_type,
             core_traits=dict(version.core_traits),
@@ -714,6 +795,13 @@ class DialogueTurnService:
             immediate_facts=immediate,
             working_memory=working,
             attention_topics=topics,
+            archive=dict(version.archive) if isinstance(version.archive, dict) else None,
+            versions={
+                "persona_version_id": str(version.id),
+                "persona_version": str(version.version_number),
+                "state_version": str(state.version),
+                **({} if working_version is None else {"working_memory_version": str(working_version)}),
+            },
         )
 
     async def _choose(
@@ -774,6 +862,69 @@ class DialogueTurnService:
             should_send=should_send,
             decision_id=decision_id,
         )
+
+    async def _record_executed_state(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID | None,
+        decision_id: uuid.UUID,
+        message_id: uuid.UUID | None,
+        suggestion: ModelDecisionSuggestion,
+        action: DialogueAction,
+        should_send: bool,
+        validation: dict[str, object],
+        *,
+        user_spoke: bool,
+    ) -> None:
+        if validation.get("blocked"):
+            return
+        try:
+            current = await self._states.get_current(session, user_id, companion_id)
+            plan = plan_turn_state(
+                action=action,
+                secondary_actions=list(suggestion.secondary_actions),
+                should_send=should_send,
+                fallback=bool(validation.get("fallback")),
+                blocked=False,
+                confidence=float(suggestion.confidence),
+                emotion=EmotionState.model_validate(current.emotion),
+                relationship=RelationshipState.model_validate(current.relationship),
+                interaction=InteractionState.model_validate(current.interaction),
+                motivation=MotivationState.model_validate(current.motivation),
+                user_spoke=user_spoke,
+                now=datetime.now(UTC),
+            )
+            if plan is None:
+                return
+            await self._states.apply_change(
+                session,
+                user_id,
+                companion_id,
+                ApplyStateChangeRequest(
+                    expected_version=current.version,
+                    source_type=StateSourceType.DIALOGUE_DECISION,
+                    reason=plan.reason,
+                    conversation_id=conversation_id,
+                    message_id=message_id,
+                    dialogue_decision_id=decision_id,
+                    emotion=plan.emotion,
+                    relationship=plan.relationship,
+                    interaction=plan.interaction,
+                    motivation=plan.motivation,
+                ),
+            )
+        except AppError as exc:
+            logger.info("turn state was not written for decision %s: %s", decision_id, exc.message)
+        except Exception:
+            logger.exception("turn state update failed for decision %s", decision_id)
+
+    async def _link_calls(self, trace_id: uuid.UUID, decision_id: uuid.UUID) -> None:
+        try:
+            await self._logs.attach_decision(trace_id, decision_id)
+        except Exception:
+            logger.exception("failed to link model calls trace_id=%s decision_id=%s", trace_id, decision_id)
 
 
 _PROACTIVE_MODES = {InteractionMode.AVAILABLE, InteractionMode.WAITING}

@@ -3,17 +3,18 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TypeVar
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import Settings, get_settings
 from app.modules.infrastructure.api.schemas import RecordModelCallRequest
 from app.modules.infrastructure.domain.enums import CONFIG_TASK_TYPES, ModelCallStatus, ModelConfigKey, ModelProvider
 from app.modules.infrastructure.repositories.infrastructure_repository import ModelConfigRepository
-from app.modules.infrastructure.services.model_call_log_service import ModelCallLogService
+from app.modules.infrastructure.services.model_call_log_service import CallDetail, ModelCallLogService
 from app.modules.model_adapter.domain.embedding import EMBEDDING_DIMENSIONS, EmbeddingResult, TextEmbedder
 from app.modules.model_adapter.domain.errors import (
     ModelAdapterError,
@@ -41,6 +42,16 @@ class ModelCallScope(BaseModel):
     conversation_id: uuid.UUID | None = None
     dialogue_decision_id: uuid.UUID | None = None
     background_task_id: uuid.UUID | None = None
+    context_versions: dict[str, str] = Field(default_factory=dict)
+
+
+@dataclass
+class _Attempt:
+    messages: list[ChatMessage]
+    payload: dict[str, object]
+    response: dict[str, object] | None = None
+    text: str | None = None
+    returned_model: str | None = None
 
 
 class ModelAdapter:
@@ -81,7 +92,7 @@ class ModelAdapter:
             json_object=json_object,
             stream=False,
         )
-        body = await self._complete_with_retry(payload, config, task, scope)
+        body = await self._complete_with_retry(messages, payload, config, task, scope)
         content, finish_reason, input_tokens, output_tokens = _read_completion(body)
         return TextCompletion(
             content=content,
@@ -121,8 +132,14 @@ class ModelAdapter:
         input_tokens: int | None = None
         output_tokens: int | None = None
         produced = False
+        pieces: list[str] = []
+        returned_model: str | None = None
+        attempt = _Attempt(messages=messages, payload=payload)
         try:
             async for chunk in self._client.stream(payload, self._settings.deepseek_timeout_seconds):
+                model_name = chunk.get("model")
+                if isinstance(model_name, str) and model_name.strip():
+                    returned_model = model_name.strip()
                 usage = chunk.get("usage")
                 if isinstance(usage, dict):
                     input_tokens = _optional_int(usage.get("prompt_tokens"))
@@ -130,8 +147,11 @@ class ModelAdapter:
                 piece = _stream_piece(chunk)
                 if piece:
                     produced = True
+                    pieces.append(piece)
                     yield piece
         except GeneratorExit:
+            attempt.text = "".join(pieces)
+            attempt.returned_model = returned_model
             await self._log(
                 config,
                 task,
@@ -143,11 +163,16 @@ class ModelAdapter:
                 created_at=created_at,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                attempt=attempt,
             )
             raise
         except (ModelTimeoutError, ModelHttpError, ModelAdapterError) as exc:
-            await self._log_exception(config, task, scope, exc, started, created_at)
+            attempt.text = "".join(pieces)
+            attempt.returned_model = returned_model
+            await self._log_exception(config, task, scope, exc, started, created_at, attempt)
             raise
+        attempt.text = "".join(pieces)
+        attempt.returned_model = returned_model
         if not produced:
             await self._log(
                 config,
@@ -160,6 +185,7 @@ class ModelAdapter:
                 created_at=created_at,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                attempt=attempt,
             )
             raise ModelOutputError("模型没有返回文本")
         await self._log(
@@ -171,6 +197,7 @@ class ModelAdapter:
             created_at=created_at,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            attempt=attempt,
         )
 
     async def embed(self, task: ModelConfigKey, texts: list[str], scope: ModelCallScope) -> EmbeddingResult:
@@ -182,6 +209,11 @@ class ModelAdapter:
         config = await self._load_config(task)
         provider = _provider(config)
         model_name = str(_config_attr(config, "model_name"))
+        embedding_attempt = _Attempt(
+            messages=[ChatMessage(role="user", content=text) for text in cleaned],
+            payload={"model": model_name, "input_count": len(cleaned)},
+            returned_model=model_name,
+        )
         started = time.perf_counter()
         created_at = datetime.now(UTC)
         if provider != ModelProvider.LOCAL:
@@ -194,6 +226,7 @@ class ModelAdapter:
                 error_code="model_capability",
                 error_message="Embedding 使用本地模型，不能调用 DeepSeek",
                 created_at=created_at,
+                attempt=embedding_attempt,
             )
             raise ModelCapabilityError("Embedding 使用本地模型，不能调用 DeepSeek")
         if len(model_name) > 64:
@@ -206,15 +239,17 @@ class ModelAdapter:
                 error_code="model_capability",
                 error_message="Embedding 模型名称过长",
                 created_at=created_at,
+                attempt=embedding_attempt,
             )
             raise ModelCapabilityError("Embedding 模型名称过长")
         backend = self._embedder or _default_embedder()
         try:
             vectors = await backend.embed(model_name, cleaned)
         except ModelAdapterError as exc:
-            await self._log_exception(config, task, scope, exc, started, created_at)
+            await self._log_exception(config, task, scope, exc, started, created_at, embedding_attempt)
             raise
         if len(vectors) != len(cleaned) or any(len(vector) != EMBEDDING_DIMENSIONS for vector in vectors):
+            embedding_attempt.response = {"vector_count": len(vectors), "error": "invalid_dimensions"}
             await self._log(
                 config,
                 task,
@@ -224,8 +259,10 @@ class ModelAdapter:
                 error_code="invalid_embedding",
                 error_message="向量维度不正确",
                 created_at=created_at,
+                attempt=embedding_attempt,
             )
             raise ModelOutputError("向量维度不正确")
+        embedding_attempt.response = {"vector_count": len(vectors), "dimensions": EMBEDDING_DIMENSIONS}
         await self._log(
             config,
             task,
@@ -233,11 +270,13 @@ class ModelAdapter:
             status=ModelCallStatus.SUCCESS,
             latency_ms=_latency(started),
             created_at=created_at,
+            attempt=embedding_attempt,
         )
         return EmbeddingResult(model_name=model_name, vectors=vectors)
 
     async def _complete_with_retry(
         self,
+        messages: list[ChatMessage],
         payload: dict[str, object],
         config: object,
         task: ModelConfigKey,
@@ -245,21 +284,26 @@ class ModelAdapter:
     ) -> dict[str, object]:
         attempts = self._settings.deepseek_max_retries + 1
         last_error: ModelAdapterError | None = None
-        for attempt in range(attempts):
+        for attempt_index in range(attempts):
             started = time.perf_counter()
             created_at = datetime.now(UTC)
+            captured = _Attempt(messages=messages, payload=payload)
             try:
                 body = await self._client.complete(payload, self._settings.deepseek_timeout_seconds)
             except (ModelTimeoutError, ModelHttpError) as exc:
                 retryable = isinstance(exc, ModelTimeoutError) or (
                     isinstance(exc, ModelHttpError) and exc.http_status in _RETRYABLE_HTTP
                 )
-                await self._log_exception(config, task, scope, exc, started, created_at)
+                await self._log_exception(config, task, scope, exc, started, created_at, captured)
                 last_error = exc
-                if retryable and attempt < attempts - 1:
+                if retryable and attempt_index < attempts - 1:
                     continue
                 raise
             content, _, input_tokens, output_tokens = _read_completion(body)
+            returned = body.get("model")
+            captured.response = body
+            captured.text = content
+            captured.returned_model = returned.strip() if isinstance(returned, str) else None
             if not content.strip():
                 await self._log(
                     config,
@@ -272,6 +316,7 @@ class ModelAdapter:
                     created_at=created_at,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
+                    attempt=captured,
                 )
                 raise ModelOutputError("模型没有返回文本")
             await self._log(
@@ -283,6 +328,7 @@ class ModelAdapter:
                 created_at=created_at,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                attempt=captured,
             )
             return body
         if last_error is not None:
@@ -314,6 +360,7 @@ class ModelAdapter:
         exc: ModelAdapterError,
         started: float,
         created_at: datetime,
+        attempt: _Attempt | None = None,
     ) -> None:
         if isinstance(exc, ModelTimeoutError):
             status = ModelCallStatus.TIMEOUT
@@ -336,6 +383,7 @@ class ModelAdapter:
             error_code=error_code,
             error_message=error_message,
             created_at=created_at,
+            attempt=attempt,
         )
 
     async def _log(
@@ -351,6 +399,7 @@ class ModelAdapter:
         error_message: str | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
+        attempt: _Attempt | None = None,
     ) -> None:
         started_at = created_at or datetime.now(UTC)
         completed_at = datetime.now(UTC)
@@ -377,8 +426,34 @@ class ModelAdapter:
             completed_at=completed_at,
         )
         async with self._session_factory() as session:
-            await self._logs.record(session, request)
+            await self._logs.record(session, request, _call_detail(attempt, scope))
         logger.info("model call task=%s status=%s latency_ms=%s", task.value, status.value, latency_ms)
+
+
+def _call_detail(attempt: _Attempt | None, scope: ModelCallScope) -> CallDetail | None:
+    if attempt is None:
+        return None
+    parameters = {key: value for key, value in attempt.payload.items() if key != "messages"}
+    messages = [item.model_dump() for item in attempt.messages]
+    prompt = "\n\n".join(item.content for item in attempt.messages if item.role == "system")
+    response: dict[str, object]
+    if attempt.response is not None:
+        response = dict(attempt.response)
+        if attempt.text:
+            response["content"] = attempt.text
+    elif attempt.text is not None:
+        response = {"content": attempt.text}
+    else:
+        response = {}
+    returned = attempt.returned_model
+    return CallDetail(
+        returned_model_name=returned,
+        parameters=parameters,
+        prompt_snapshot=prompt or None,
+        messages_snapshot=messages,
+        response_snapshot=response or None,
+        context_versions=dict(scope.context_versions),
+    )
 
 
 def _read_completion(body: dict[str, object]) -> tuple[str, str | None, int | None, int | None]:

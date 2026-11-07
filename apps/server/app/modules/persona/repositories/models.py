@@ -57,6 +57,19 @@ class PersonaVersion(UUIDPrimaryKeyMixin, Base):
         CheckConstraint(_MBTI_CHECK, name="mbti_type"),
         CheckConstraint("version_number >= 1", name="version_number_positive"),
         CheckConstraint("char_length(change_reason) > 0", name="change_reason_nonempty"),
+        CheckConstraint(
+            "jsonb_typeof(archive) = 'object'"
+            " AND archive ?& ARRAY['identity','background','interests','viewpoints','values','thinking_habits','communication','attention']"
+            " AND jsonb_typeof(archive->'identity') = 'string' AND char_length(archive->>'identity') > 0"
+            " AND jsonb_typeof(archive->'background') = 'string' AND char_length(archive->>'background') > 0"
+            " AND jsonb_typeof(archive->'communication') = 'string' AND char_length(archive->>'communication') > 0"
+            " AND jsonb_typeof(archive->'interests') = 'array' AND jsonb_array_length(archive->'interests') >= 1"
+            " AND jsonb_typeof(archive->'viewpoints') = 'array' AND jsonb_array_length(archive->'viewpoints') >= 1"
+            " AND jsonb_typeof(archive->'values') = 'array' AND jsonb_array_length(archive->'values') >= 1"
+            " AND jsonb_typeof(archive->'thinking_habits') = 'array' AND jsonb_array_length(archive->'thinking_habits') >= 1"
+            " AND jsonb_typeof(archive->'attention') = 'array' AND jsonb_array_length(archive->'attention') >= 1",
+            name="ck_persona_versions_archive_sections",
+        ),
     )
 
     persona_profile_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -80,6 +93,7 @@ class PersonaVersion(UUIDPrimaryKeyMixin, Base):
         default=dict,
         server_default=text("'{}'::jsonb"),
     )
+    archive: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     change_reason: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
