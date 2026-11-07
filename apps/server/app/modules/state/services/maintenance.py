@@ -10,13 +10,22 @@ from app.modules.identity.services.identity_service import IdentityService
 from app.modules.infrastructure.api.schemas import CreateBackgroundTaskRequest
 from app.modules.infrastructure.domain.enums import BackgroundTaskType
 from app.modules.infrastructure.services.background_task_service import BackgroundTaskService
+from pydantic import ValidationError
+
+from app.modules.persona.domain.archive import (
+    PersonaArchive,
+    RelationshipSelfAssertion,
+    forgiveness_half_life_multipliers,
+)
+from app.modules.persona.services.persona_service import PersonaService
 from app.modules.state.api.schemas import ApplyStateChangeRequest
 from app.modules.state.domain.enums import StateSourceType
-from app.modules.state.domain.maintenance import plan_maintenance
-from app.modules.state.domain.snapshots import EmotionState, InteractionState
+from app.modules.state.domain.maintenance import AbsenceDispositionFactors, factors_from_disposition, plan_maintenance
+from app.modules.state.domain.snapshots import EmotionState, InteractionState, RelationshipState
 from app.modules.state.repositories.state_repository import StateRepository
 from app.modules.state.services.state_service import StateService
 from app.shared.database.session import get_session_factory
+from app.shared.exceptions.errors import AppError
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +39,14 @@ class StateMaintenanceService:
         repository: StateRepository | None = None,
         identity: IdentityService | None = None,
         tasks: BackgroundTaskService | None = None,
+        personas: PersonaService | None = None,
         session_factory: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
         self._states = states or StateService()
         self._repository = repository or StateRepository()
         self._identity = identity or IdentityService()
         self._tasks = tasks or BackgroundTaskService()
+        self._personas = personas or PersonaService()
         self._session_factory = session_factory or get_session_factory()
 
     async def maintain(
@@ -108,10 +119,14 @@ class StateMaintenanceService:
         current = await self._repository.get_for_companion(session, companion_id)
         if current is None:
             return {"changed": False, "reason": "missing"}
+        relationship = RelationshipState.model_validate(current.relationship)
         plan = plan_maintenance(
             EmotionState.model_validate(current.emotion),
             InteractionState.model_validate(current.interaction),
             now,
+            relationship=relationship,
+            absence_factors=await self._absence_factors(session, user_id, companion_id),
+            half_life_multipliers=await self._forgiveness_multipliers(session, user_id, companion_id),
         )
         if plan.reason is None:
             return {"changed": False, "reason": "unchanged"}
@@ -126,8 +141,58 @@ class StateMaintenanceService:
                 conversation_id=conversation_id,
                 message_id=message_id,
                 emotion=plan.emotion,
+                relationship=plan.relationship,
                 interaction=plan.interaction,
             ),
         )
         logger.info("maintained state %s to version %s", saved.id, saved.version)
         return {"changed": True, "version": saved.version}
+
+    async def _absence_factors(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+    ) -> AbsenceDispositionFactors:
+        try:
+            _profile, version = await self._personas.get_current(session, user_id, companion_id)
+        except AppError:
+            return AbsenceDispositionFactors()
+        archive = version.archive if isinstance(version.archive, dict) else None
+        if not archive:
+            return AbsenceDispositionFactors()
+        relationship = archive.get("relationship")
+        if not isinstance(relationship, dict):
+            return AbsenceDispositionFactors()
+        disposition = relationship.get("attachment_disposition")
+        if not isinstance(disposition, dict):
+            return AbsenceDispositionFactors()
+        return factors_from_disposition(disposition)
+
+    async def _forgiveness_multipliers(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+    ) -> dict[str, float] | None:
+        try:
+            _profile, version = await self._personas.get_current(session, user_id, companion_id)
+        except AppError:
+            return None
+        archive = version.archive if isinstance(version.archive, dict) else None
+        if not archive:
+            return None
+        try:
+            assertion = PersonaArchive.model_validate(archive).relationship.self_assertion
+        except ValidationError:
+            raw = archive.get("relationship")
+            if not isinstance(raw, dict):
+                return None
+            payload = raw.get("self_assertion")
+            if not isinstance(payload, dict):
+                return None
+            try:
+                assertion = RelationshipSelfAssertion.model_validate(payload)
+            except ValidationError:
+                return None
+        return forgiveness_half_life_multipliers(assertion.forgiveness_tendency)

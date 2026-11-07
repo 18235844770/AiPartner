@@ -33,10 +33,13 @@ watch(
 );
 
 async function submitMessage(): Promise<void> {
-  const sent = await chat.sendMessage(messageDraft.value);
-  if (sent) {
-    messageDraft.value = "";
+  const content = messageDraft.value;
+  if (!content.trim() || chat.sending.value || !chat.selected.value) {
+    return;
   }
+  // 一点击发送就清空输入框，不必等整轮流式结束。
+  messageDraft.value = "";
+  await chat.sendMessage(content);
 }
 
 function onComposerKeydown(event: KeyboardEvent): void {

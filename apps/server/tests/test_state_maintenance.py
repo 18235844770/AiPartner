@@ -12,8 +12,14 @@ from app.modules.infrastructure.services.background_task_service import Backgrou
 from app.modules.infrastructure.services.task_executor import TaskExecutor
 from app.modules.infrastructure.worker import maintain_state_task
 from app.modules.state.domain.enums import InteractionMode
-from app.modules.state.domain.maintenance import EMOTION_DECAY_WINDOW, SETTLED_CAUSE, plan_maintenance
-from app.modules.state.domain.snapshots import EmotionState, InteractionState
+from app.modules.state.domain.maintenance import (
+    EMOTION_DECAY_WINDOW,
+    SETTLED_CAUSE,
+    AbsenceDispositionFactors,
+    factors_from_disposition,
+    plan_maintenance,
+)
+from app.modules.state.domain.snapshots import EmotionState, InteractionState, RelationshipState
 from app.modules.state.services.maintenance import StateMaintenanceService
 from app.shared.database.session import dispose_engine, get_engine, get_session_factory
 
@@ -37,24 +43,25 @@ def test_temporary_emotion_fades_and_open_quiet_stays() -> None:
     )
     halfway = plan_maintenance(emotion, quiet, now)
     assert halfway.emotion is not None
-    assert halfway.emotion.primary == "happy"
-    assert halfway.emotion.intensity == 0.5
-    assert halfway.emotion.arousal == 0
-    assert halfway.emotion.valence == 0
+    # 遗留 intensity 会种子化到 joy，再按半衰期指数回落。
+    assert halfway.emotion.levels["joy"] < 100
+    assert halfway.emotion.levels["joy"] > 50
+    assert halfway.emotion.intensity < 1
     assert halfway.emotion.cause_summary == "刚聊完"
     assert halfway.interaction is None
     assert halfway.reason == "临时情绪随时间衰减"
 
     settled = plan_maintenance(
-        emotion.model_copy(update={"updated_at": now - EMOTION_DECAY_WINDOW}),
+        emotion.model_copy(update={"updated_at": now - timedelta(hours=72)}),
         quiet,
         now,
     )
     assert settled.emotion is not None
-    assert settled.emotion.primary == "calm"
+    assert settled.emotion.primary in {"calm", "平静"}
     assert settled.emotion.intensity == 0
     assert settled.emotion.secondary == []
     assert settled.emotion.cause_summary == SETTLED_CAUSE
+    assert all(value == 0 for value in settled.emotion.levels.values())
 
     resting = EmotionState(
         primary="calm",
@@ -101,6 +108,84 @@ def test_expired_quiet_ends_without_granting_or_clearing_permission() -> None:
     assert paused_plan.interaction.proactive_allowed is False
     future = expired.model_copy(update={"quiet_until": now + timedelta(minutes=10)})
     assert plan_maintenance(calm, future, now).interaction is None
+
+
+def test_absence_scales_by_attachment_and_dependency_disposition() -> None:
+    now = datetime(2026, 11, 7, 12, tzinfo=UTC)
+    calm = EmotionState(
+        primary="平静",
+        intensity=0,
+        valence=0,
+        arousal=0,
+        cause_summary="状态初始化",
+        updated_at=now,
+    )
+    interaction = InteractionState(
+        mode=InteractionMode.AVAILABLE,
+        proactive_allowed=False,
+        waiting_for_user=False,
+        consecutive_unanswered_messages=0,
+        last_user_response_at=now - timedelta(hours=48),
+    )
+    relationship = RelationshipState(
+        closeness=0.1,
+        trust=0.1,
+        attachment=0.1,
+        care=0.1,
+        current_tension=0,
+        attachment_strength=0.05,
+        emotional_reliance=0.0,
+        relationship_security=0.1,
+        perceived_specialness=0.05,
+        separation_sensitivity=0.0,
+        reassurance_satisfaction=0.2,
+        closeness_desire=0.1,
+        exclusivity_need=0.05,
+        summary="熟悉阶段：开始形成共同交流期待",
+    )
+    high = factors_from_disposition(
+        {
+            "attachment_tendency": "high",
+            "emotional_dependency_tendency": "high",
+            "separation_sensitivity": "high",
+            "reassurance_need": "high",
+        }
+    )
+    low = factors_from_disposition(
+        {
+            "attachment_tendency": "low",
+            "emotional_dependency_tendency": "low",
+            "separation_sensitivity": "low",
+            "reassurance_need": "low",
+        }
+    )
+    mixed = factors_from_disposition(
+        {
+            "attachment_tendency": "high",
+            "emotional_dependency_tendency": "low",
+            "separation_sensitivity": "high",
+            "reassurance_need": "low",
+        }
+    )
+    high_plan = plan_maintenance(calm, interaction, now, relationship=relationship, absence_factors=high)
+    low_plan = plan_maintenance(calm, interaction, now, relationship=relationship, absence_factors=low)
+    mixed_plan = plan_maintenance(calm, interaction, now, relationship=relationship, absence_factors=mixed)
+    assert high_plan.emotion is not None and low_plan.emotion is not None and mixed_plan.emotion is not None
+    assert high_plan.emotion.levels["longing"] > low_plan.emotion.levels["longing"]
+    assert high_plan.emotion.levels["anxiety"] > low_plan.emotion.levels["anxiety"]
+    assert mixed_plan.emotion.levels["longing"] > low_plan.emotion.levels["longing"]
+    assert mixed_plan.emotion.levels["anxiety"] < high_plan.emotion.levels["anxiety"]
+    assert high_plan.relationship is not None and low_plan.relationship is not None
+    assert high_plan.relationship.emotional_reliance > low_plan.relationship.emotional_reliance
+    assert high_plan.relationship.closeness_desire > low_plan.relationship.closeness_desire
+
+
+def test_absence_factors_default_to_medium() -> None:
+    factors = AbsenceDispositionFactors()
+    assert factors.longing_factor == 1.0
+    assert factors.anxiety_factor == 1.0
+    derived = factors_from_disposition(None)
+    assert derived.longing_factor == 1.0
 
 
 async def test_state_handler_rejects_a_bad_payload() -> None:
@@ -227,7 +312,10 @@ async def test_maintenance_fades_emotion_and_ends_quiet_without_rewriting_relati
         current = await client.get(base)
         body = current.json()
         assert body["emotion"]["primary"] == "happy"
-        assert body["emotion"]["intensity"] == 0.5
+        assert body["emotion"]["intensity"] < 1
+        assert body["emotion"]["intensity"] > 0.4
+        assert body["emotion"]["levels"]["joy"] < 100
+        assert body["emotion"]["levels"]["joy"] > 50
         assert body["emotion"]["cause_summary"] == "刚聊完"
         assert body["relationship"]["closeness"] == 0.4
         assert body["relationship"]["summary"] == "刚认识"

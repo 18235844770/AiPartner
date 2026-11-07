@@ -193,27 +193,41 @@ async def _prepare(name: str) -> dict[str, str]:
     }
 
 
-async def _allow(scope: dict[str, str], *, quiet_until: datetime | None = None) -> None:
-    interaction: dict[str, object] = {
-        "mode": "available",
-        "proactive_allowed": True,
-        "waiting_for_user": False,
-        "consecutive_unanswered_messages": 0,
-    }
-    if quiet_until is not None:
-        interaction["quiet_until"] = quiet_until.isoformat()
+async def _set_proactive(
+    scope: dict[str, str],
+    *,
+    allowed: bool,
+    quiet_until: datetime | None = None,
+    set_quiet_until: bool = False,
+) -> None:
+    state_url = f"/api/users/{scope['user_id']}/companions/{scope['companion_id']}/state"
     app = create_app()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        changed = await client.post(
-            f"/api/users/{scope['user_id']}/companions/{scope['companion_id']}/state/changes",
+        current = await client.get(state_url)
+        assert current.status_code == 200
+        body = current.json()
+        interaction = dict(body["interaction"])
+        changed = False
+        if interaction.get("proactive_allowed") is not allowed:
+            interaction["proactive_allowed"] = allowed
+            changed = True
+        if set_quiet_until:
+            value = quiet_until.isoformat() if quiet_until is not None else None
+            if interaction.get("quiet_until") != value:
+                interaction["quiet_until"] = value
+                changed = True
+        if not changed:
+            return
+        response = await client.post(
+            f"{state_url}/changes",
             json={
-                "expected_version": 1,
+                "expected_version": body["version"],
                 "source_type": "system",
-                "reason": "调试中允许主动交流",
+                "reason": "调试中调整主动交流开关",
                 "interaction": interaction,
             },
         )
-        assert changed.status_code == 200
+        assert response.status_code == 200
 
 
 async def _message_count(conversation_id: str) -> int:
@@ -228,6 +242,7 @@ async def _message_count(conversation_id: str) -> int:
 @pytest.mark.asyncio
 async def test_check_stays_quiet_when_contact_is_not_allowed(database_ready: None) -> None:
     scope = await _prepare("不允许主动")
+    await _set_proactive(scope, allowed=False)
     moment = datetime.now(UTC)
     adapter = _Adapter(_share())
     finished = await _run(await _task(scope["user_id"], scope["companion_id"], "blocked", moment), adapter, moment)
@@ -241,7 +256,6 @@ async def test_check_stays_quiet_when_contact_is_not_allowed(database_ready: Non
 @pytest.mark.asyncio
 async def test_check_sends_one_message_when_the_decision_shares(database_ready: None) -> None:
     scope = await _prepare("可以主动")
-    await _allow(scope)
     moment = datetime.now(UTC)
     adapter = _Adapter(_share())
     finished = await _run(await _task(scope["user_id"], scope["companion_id"], "send", moment), adapter, moment)
@@ -261,7 +275,7 @@ async def test_check_sends_one_message_when_the_decision_shares(database_ready: 
 async def test_check_respects_quiet_until_and_a_failed_decision(database_ready: None) -> None:
     scope = await _prepare("安静时段")
     moment = datetime.now(UTC)
-    await _allow(scope, quiet_until=moment + timedelta(hours=1))
+    await _set_proactive(scope, allowed=True, quiet_until=moment + timedelta(hours=1), set_quiet_until=True)
     adapter = _Adapter(ModelTimeoutError("决策模型超时"))
     quiet = await _run(await _task(scope["user_id"], scope["companion_id"], "quiet", moment), adapter, moment)
     assert quiet is not None

@@ -73,6 +73,21 @@ async def test_quiet_is_recorded_without_a_message_and_realization_keeps_the_act
 
         created_state = await client.post(state, json={})
         assert created_state.status_code == 201
+        assert created_state.json()["interaction"]["proactive_allowed"] is True
+
+        disabled = await client.post(
+            f"{state}/changes",
+            json={
+                "expected_version": created_state.json()["version"],
+                "source_type": "system",
+                "reason": "调试中关闭主动交流",
+                "interaction": {
+                    **created_state.json()["interaction"],
+                    "proactive_allowed": False,
+                },
+            },
+        )
+        assert disabled.status_code == 200
 
         blocked = await client.post(
             decisions,
@@ -98,14 +113,12 @@ async def test_quiet_is_recorded_without_a_message_and_realization_keeps_the_act
         allowed = await client.post(
             f"{state}/changes",
             json={
-                "expected_version": 1,
+                "expected_version": disabled.json()["version"],
                 "source_type": "system",
                 "reason": "调试中允许主动交流",
                 "interaction": {
-                    "mode": "available",
+                    **disabled.json()["interaction"],
                     "proactive_allowed": True,
-                    "waiting_for_user": False,
-                    "consecutive_unanswered_messages": 0,
                 },
             },
         )

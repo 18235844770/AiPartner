@@ -8,6 +8,122 @@ from app.modules.dialogue.domain.enums import DialogueAction, SelfMotivationKind
 FALLBACK_USER_TEXT = "我暂时无法完成这次回复。"
 RECENT_MESSAGE_LIMIT = 10
 
+_INTENSITY_WORDS = {
+    "none": 0.0,
+    "no": 0.0,
+    "low": 0.3,
+    "weak": 0.3,
+    "medium": 0.5,
+    "mid": 0.5,
+    "moderate": 0.5,
+    "normal": 0.5,
+    "high": 0.8,
+    "strong": 0.85,
+    "very_high": 1.0,
+    "max": 1.0,
+}
+
+# 模型常把关系动机写成近义标签；映射到已有 SelfMotivationKind。
+_KIND_ALIASES = {
+    "maintain_connection": SelfMotivationKind.SEEK_CONNECTION,
+    "keep_connection": SelfMotivationKind.SEEK_CONNECTION,
+    "connection": SelfMotivationKind.SEEK_CONNECTION,
+    "reassurance": SelfMotivationKind.SHOW_CARE,
+    "reassure": SelfMotivationKind.SHOW_CARE,
+    "comfort": SelfMotivationKind.SHOW_CARE,
+    "care": SelfMotivationKind.SHOW_CARE,
+    "check_in": SelfMotivationKind.SHOW_CARE,
+    "presence": SelfMotivationKind.SEEK_CONNECTION,
+    "greeting": SelfMotivationKind.SEEK_CONNECTION,
+    "affection": SelfMotivationKind.EXPRESS_EMOTION,
+    "emotion": SelfMotivationKind.EXPRESS_EMOTION,
+    "interest": SelfMotivationKind.SHARE_INTEREST,
+    "thought": SelfMotivationKind.SHARE_THOUGHT,
+    "opinion": SelfMotivationKind.EXPRESS_OPINION,
+    "attention": SelfMotivationKind.SEEK_ATTENTION,
+    "play": SelfMotivationKind.PLAYFUL_INTERACTION,
+    "memory": SelfMotivationKind.RECALL_MEMORY,
+    "topic": SelfMotivationKind.CONTINUE_TOPIC,
+    "assert": SelfMotivationKind.ASSERT_STANCE,
+    "assert_stance": SelfMotivationKind.ASSERT_STANCE,
+    "hold_position": SelfMotivationKind.ASSERT_STANCE,
+    "stand_ground": SelfMotivationKind.ASSERT_STANCE,
+    "grievance": SelfMotivationKind.EXPRESS_GRIEVANCE,
+    "express_grievance": SelfMotivationKind.EXPRESS_GRIEVANCE,
+    "complaint": SelfMotivationKind.EXPRESS_GRIEVANCE,
+    "blame": SelfMotivationKind.EXPRESS_GRIEVANCE,
+    "resentment": SelfMotivationKind.EXPRESS_GRIEVANCE,
+    "acknowledgment": SelfMotivationKind.SEEK_ACKNOWLEDGMENT,
+    "seek_acknowledgment": SelfMotivationKind.SEEK_ACKNOWLEDGMENT,
+    "want_understanding": SelfMotivationKind.SEEK_ACKNOWLEDGMENT,
+    "need_explanation": SelfMotivationKind.SEEK_ACKNOWLEDGMENT,
+}
+
+
+def _coerce_text_part(value: object) -> object:
+    """兴趣/观点/表达欲必须是文字；模型常返回 null/false/数字。"""
+    if value is None or value is False:
+        return "没有"
+    if value is True:
+        return "有"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if float(value) <= 0:
+            return "没有"
+        return "有一点想表达"
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _coerce_intensity(value: object) -> object:
+    if value is None or value is False:
+        return 0.0
+    if value is True:
+        return 1.0
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        number = float(value)
+        if number < 0:
+            return 0.0
+        if number > 1:
+            return 1.0
+        return number
+    if isinstance(value, str):
+        stripped = value.strip().lower().replace("-", "_").replace(" ", "_")
+        if not stripped:
+            return 0.0
+        if stripped in _INTENSITY_WORDS:
+            return _INTENSITY_WORDS[stripped]
+        try:
+            number = float(stripped)
+        except ValueError:
+            return value
+        if number < 0:
+            return 0.0
+        if number > 1:
+            return 1.0
+        return number
+    return value
+
+
+def _coerce_motivation_kind(value: object) -> object:
+    if value is None or value == "":
+        return SelfMotivationKind.NONE
+    if isinstance(value, SelfMotivationKind):
+        return value
+    text = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    if not text:
+        return SelfMotivationKind.NONE
+    try:
+        return SelfMotivationKind(text)
+    except ValueError:
+        pass
+    if text in _KIND_ALIASES:
+        return _KIND_ALIASES[text]
+    for kind in SelfMotivationKind:
+        if text in kind.value or kind.value in text:
+            return kind
+    return SelfMotivationKind.NONE
+
 
 class UserNeed(BaseModel):
     """用户这一轮的交流需求。"""
@@ -40,9 +156,7 @@ class SelfMotivation(BaseModel):
     @field_validator("interest", "viewpoint", "desire_to_express", mode="before")
     @classmethod
     def missing_means_none(cls, value: object) -> object:
-        if value is None:
-            return "没有"
-        return value
+        return _coerce_text_part(value)
 
     @field_validator("interest", "viewpoint", "desire_to_express")
     @classmethod
@@ -55,9 +169,7 @@ class SelfMotivation(BaseModel):
     @field_validator("kind", mode="before")
     @classmethod
     def missing_kind_is_none(cls, value: object) -> object:
-        if value is None or value == "":
-            return SelfMotivationKind.NONE
-        return value
+        return _coerce_motivation_kind(value)
 
     @field_validator("source", "reason")
     @classmethod
@@ -76,6 +188,13 @@ class EmotionalMotivation(BaseModel):
     emotion: str = Field(min_length=1, max_length=32)
     intensity: float = Field(ge=0, le=1)
 
+    @field_validator("emotion", mode="before")
+    @classmethod
+    def coerce_emotion(cls, value: object) -> object:
+        if value is None:
+            return "平静"
+        return value
+
     @field_validator("emotion")
     @classmethod
     def strip_emotion(cls, value: str) -> str:
@@ -83,6 +202,11 @@ class EmotionalMotivation(BaseModel):
         if not stripped:
             raise ValueError("不能为空")
         return stripped
+
+    @field_validator("intensity", mode="before")
+    @classmethod
+    def coerce_intensity(cls, value: object) -> object:
+        return _coerce_intensity(value)
 
 
 class RelationshipMotivation(BaseModel):
@@ -97,9 +221,12 @@ class RelationshipMotivation(BaseModel):
     @field_validator("kind", mode="before")
     @classmethod
     def missing_kind_is_none(cls, value: object) -> object:
-        if value is None or value == "":
-            return SelfMotivationKind.NONE
-        return value
+        return _coerce_motivation_kind(value)
+
+    @field_validator("intensity", mode="before")
+    @classmethod
+    def coerce_intensity(cls, value: object) -> object:
+        return _coerce_intensity(value)
 
     @field_validator("reason")
     @classmethod

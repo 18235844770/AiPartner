@@ -70,6 +70,32 @@ class RelationshipPreferences(BaseModel):
         return cleaned
 
 
+class RelationshipSelfAssertion(BaseModel):
+    """关系自我主张倾向。影响表达概率与方式，不强制每轮行为。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assertiveness: TendencyLevel = TendencyLevel.MEDIUM
+    resentment_tendency: TendencyLevel = TendencyLevel.MEDIUM
+    confrontation_tendency: TendencyLevel = TendencyLevel.MEDIUM
+    forgiveness_tendency: TendencyLevel = TendencyLevel.MEDIUM
+
+
+def default_self_assertion() -> RelationshipSelfAssertion:
+    return RelationshipSelfAssertion()
+
+
+def forgiveness_half_life_multipliers(level: TendencyLevel) -> dict[str, float]:
+    """高宽恕→负面情绪更快回落；低宽恕→更久。供状态衰减使用。"""
+    if level == TendencyLevel.HIGH:
+        scale = 0.7
+    elif level == TendencyLevel.LOW:
+        scale = 1.4
+    else:
+        scale = 1.0
+    return {"anger": scale, "hurt": scale, "sadness": (scale + 1.0) / 2.0}
+
+
 class RelationshipProfile(BaseModel):
     """Relationship Profile。初始化时形成的相对稳定关系人格配置。"""
 
@@ -77,6 +103,8 @@ class RelationshipProfile(BaseModel):
 
     attachment_disposition: AttachmentDisposition
     relationship_preferences: RelationshipPreferences
+    # 旧档案缺少该节时用中性默认，保证可解析；新建模板应显式给出。
+    self_assertion: RelationshipSelfAssertion = Field(default_factory=default_self_assertion)
 
 
 class SelfModel(BaseModel):

@@ -209,6 +209,71 @@ def test_high_disposition_grows_faster_but_respects_space() -> None:
     assert spaced.relationship.exclusivity_need <= high.relationship.exclusivity_need
 
 
+def test_rival_mention_raises_noticeable_but_bounded_jealousy() -> None:
+    now = datetime(2026, 11, 7, 16, tzinfo=UTC)
+    progress = plan_attachment_progress(
+        _relationship(attachment_strength=0.3, exclusivity_need=0.15),
+        _emotion(),
+        _disposition(attachment=TendencyLevel.MEDIUM),
+        collect_attachment_evidence(
+            user_spoke=True,
+            should_send=True,
+            action=DialogueAction.RESPOND,
+            self_motivation_kind=SelfMotivationKind.NONE,
+            relationship_motivation_kind=None,
+            user_message="今天和一个异性朋友单独出去玩了，聊得挺开心的。",
+            last_user_response_at=now - timedelta(minutes=8),
+            now=now,
+        ),
+        fallback=False,
+    )
+    assert progress.emotion is not None
+    assert progress.emotion.jealousy >= 0.18
+    assert progress.emotion.jealousy <= 0.35
+    assert progress.emotion.levels["jealousy"] >= 18
+
+
+def test_mutual_exchange_grows_reliance_with_dependency_tendency() -> None:
+    now = datetime(2026, 11, 7, 17, tzinfo=UTC)
+    base = _relationship(attachment_strength=0.12, emotional_reliance=0.0)
+    high_dep = AttachmentDisposition(
+        attachment_tendency=TendencyLevel.MEDIUM,
+        emotional_dependency_tendency=TendencyLevel.HIGH,
+        exclusivity_tendency=TendencyLevel.MEDIUM,
+        separation_sensitivity=TendencyLevel.MEDIUM,
+        reassurance_need=TendencyLevel.HIGH,
+        affection_expression=TendencyLevel.MEDIUM,
+        jealousy_tendency=TendencyLevel.MEDIUM,
+        possessiveness_tendency=TendencyLevel.MEDIUM,
+        independence_need=TendencyLevel.LOW,
+    )
+    low_dep = AttachmentDisposition(
+        attachment_tendency=TendencyLevel.MEDIUM,
+        emotional_dependency_tendency=TendencyLevel.LOW,
+        exclusivity_tendency=TendencyLevel.MEDIUM,
+        separation_sensitivity=TendencyLevel.MEDIUM,
+        reassurance_need=TendencyLevel.LOW,
+        affection_expression=TendencyLevel.MEDIUM,
+        jealousy_tendency=TendencyLevel.MEDIUM,
+        possessiveness_tendency=TendencyLevel.MEDIUM,
+        independence_need=TendencyLevel.HIGH,
+    )
+    evidence = collect_attachment_evidence(
+        user_spoke=True,
+        should_send=True,
+        action=DialogueAction.RESPOND,
+        self_motivation_kind=SelfMotivationKind.NONE,
+        relationship_motivation_kind=None,
+        user_message="今天天气不错",
+        last_user_response_at=now - timedelta(minutes=4),
+        now=now,
+    )
+    high = plan_attachment_progress(base, _emotion(), high_dep, evidence, fallback=False)
+    low = plan_attachment_progress(base, _emotion(), low_dep, evidence, fallback=False)
+    assert high.relationship is not None and low.relationship is not None
+    assert high.relationship.emotional_reliance > low.relationship.emotional_reliance
+
+
 def test_gap_raises_desire_without_inventing_attachment_strength() -> None:
     now = datetime(2026, 11, 7, 18, tzinfo=UTC)
     base = _relationship(attachment_strength=0.22, summary="熟悉阶段：开始形成共同交流期待")

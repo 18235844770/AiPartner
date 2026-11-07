@@ -577,6 +577,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/{user_id}/companions/{companion_id}/model-call-logs/{log_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Companion Model Call Snapshot */
+        get: operations["get_companion_model_call_snapshot_api_users__user_id__companions__companion_id__model_call_logs__log_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/{user_id}/companions/{companion_id}/model-call-logs": {
         parameters: {
             query?: never;
@@ -668,6 +685,21 @@ export interface components {
             relationship?: components["schemas"]["RelationshipState"] | null;
             interaction?: components["schemas"]["InteractionState"] | null;
             motivation?: components["schemas"]["MotivationState"] | null;
+        };
+        /**
+         * AttachmentDisposition
+         * @description 稳定的依恋与依赖倾向。不决定当前实际依恋强度。
+         */
+        AttachmentDisposition: {
+            attachment_tendency: components["schemas"]["TendencyLevel"];
+            emotional_dependency_tendency: components["schemas"]["TendencyLevel"];
+            exclusivity_tendency: components["schemas"]["TendencyLevel"];
+            separation_sensitivity: components["schemas"]["TendencyLevel"];
+            reassurance_need: components["schemas"]["TendencyLevel"];
+            affection_expression: components["schemas"]["TendencyLevel"];
+            jealousy_tendency: components["schemas"]["TendencyLevel"];
+            possessiveness_tendency: components["schemas"]["TendencyLevel"];
+            independence_need: components["schemas"]["TendencyLevel"];
         };
         /**
          * AttentionOrigin
@@ -1012,6 +1044,7 @@ export interface components {
             communication_preferences?: {
                 [key: string]: unknown;
             } | null;
+            archive?: components["schemas"]["PersonaArchive"] | null;
         };
         /** CreateUserRequest */
         CreateUserRequest: {
@@ -1115,10 +1148,34 @@ export interface components {
             valence: number;
             /** Arousal */
             arousal: number;
+            /**
+             * Jealousy
+             * @default 0
+             */
+            jealousy: number;
+            /**
+             * Possessiveness
+             * @default 0
+             */
+            possessiveness: number;
+            /**
+             * Emotional Tension
+             * @default 0
+             */
+            emotional_tension: number;
+            /** Triggers */
+            triggers?: string[];
             /** Cause Summary */
             cause_summary: string;
+            /** Levels */
+            levels?: {
+                [key: string]: number;
+            };
         };
-        /** EmotionState */
+        /**
+         * EmotionState
+         * @description 情绪快照。十维 levels 是 V1 主状态；jealousy 等遗留字段并行保留。
+         */
         EmotionState: {
             /** Primary */
             primary: string;
@@ -1130,8 +1187,29 @@ export interface components {
             valence: number;
             /** Arousal */
             arousal: number;
+            /**
+             * Jealousy
+             * @default 0
+             */
+            jealousy: number;
+            /**
+             * Possessiveness
+             * @default 0
+             */
+            possessiveness: number;
+            /**
+             * Emotional Tension
+             * @default 0
+             */
+            emotional_tension: number;
+            /** Triggers */
+            triggers?: string[];
             /** Cause Summary */
             cause_summary: string;
+            /** Levels */
+            levels?: {
+                [key: string]: number;
+            };
             /**
              * Updated At
              * Format: date-time
@@ -1178,6 +1256,12 @@ export interface components {
         /** InitializeStateRequest */
         InitializeStateRequest: Record<string, never>;
         /**
+         * InteractionEnergy
+         * @description 交流活跃度。与 InteractionMode、关系状态分开；默认不得是 Quiet。
+         * @enum {string}
+         */
+        InteractionEnergy: "high" | "normal" | "low" | "quiet";
+        /**
          * InteractionMode
          * @enum {string}
          */
@@ -1189,12 +1273,19 @@ export interface components {
             proactive_allowed: boolean;
             /** Waiting For User */
             waiting_for_user: boolean;
+            /** @default normal */
+            energy: components["schemas"]["InteractionEnergy"];
             /** Last User Response At */
             last_user_response_at?: string | null;
             /** Last Companion Message At */
             last_companion_message_at?: string | null;
             /** Consecutive Unanswered Messages */
             consecutive_unanswered_messages: number;
+            /**
+             * Consecutive Quiet Turns
+             * @default 0
+             */
+            consecutive_quiet_turns: number;
             /** Quiet Until */
             quiet_until?: string | null;
         };
@@ -1458,6 +1549,46 @@ export interface components {
              */
             completed_at: string;
         };
+        /** ModelCallSnapshotResponse */
+        ModelCallSnapshotResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Trace Id
+             * Format: uuid
+             */
+            trace_id: string;
+            task_type: components["schemas"]["ModelTaskType"];
+            /** Model Name */
+            model_name: string;
+            /** Returned Model Name */
+            returned_model_name: string | null;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            } | null;
+            /** Prompt Snapshot */
+            prompt_snapshot: string | null;
+            /** Messages Snapshot */
+            messages_snapshot: unknown[] | null;
+            /** Response Snapshot */
+            response_snapshot: {
+                [key: string]: unknown;
+            } | null;
+            /** Context Versions */
+            context_versions: {
+                [key: string]: unknown;
+            } | null;
+            /** Input Tokens */
+            input_tokens: number | null;
+            /** Output Tokens */
+            output_tokens: number | null;
+            /** Detail Retained Until */
+            detail_retained_until: string | null;
+        };
         /**
          * ModelCallStatus
          * @enum {string}
@@ -1542,6 +1673,63 @@ export interface components {
          * @enum {string}
          */
         OpenThreadStatus: "open" | "closed";
+        /**
+         * PersonaArchive
+         * @description 个体人格档案。identity / relationship / self_model 分层，不把所有内容塞进 identity。
+         */
+        PersonaArchive: {
+            identity: components["schemas"]["PersonaIdentity"];
+            relationship: components["schemas"]["RelationshipProfile"];
+            self_model: components["schemas"]["SelfModel"];
+            /** Background */
+            background: string;
+            /** Interests */
+            interests: string[];
+            /** Viewpoints */
+            viewpoints: string[];
+            /** Attention */
+            attention: string[];
+        };
+        /**
+         * PersonaIdentity
+         * @description MBTI Core Profile。稳定人格底色，不是每轮行为指令。
+         */
+        PersonaIdentity: {
+            /** Identity Summary */
+            identity_summary: string;
+            /** Core Temperament */
+            core_temperament: string[];
+            /** Cognitive Style */
+            cognitive_style: string[];
+            /** Thinking Habits */
+            thinking_habits: string[];
+            /** Value Orientation */
+            value_orientation: string[];
+            /** Emotional Structure */
+            emotional_structure: string[];
+            /** Emotional Expression */
+            emotional_expression: string[];
+            /** Social Tendency */
+            social_tendency: string[];
+            /** Intimate Relationship */
+            intimate_relationship: string[];
+            /** Communication Tendency */
+            communication_tendency: string[];
+            /** Interest Tendency */
+            interest_tendency: string[];
+            /** Natural Behavior */
+            natural_behavior: string[];
+            /** Strengths */
+            strengths: string[];
+            /** Weaknesses */
+            weaknesses: string[];
+            /** Internal Conflicts */
+            internal_conflicts: string[];
+            /** Misconceptions */
+            misconceptions: string[];
+            /** Personality Narrative */
+            personality_narrative: string;
+        };
         /** PersonaResponse */
         PersonaResponse: {
             /**
@@ -1697,8 +1885,28 @@ export interface components {
             completed_at: string;
         };
         /**
+         * RelationshipPreferences
+         * @description 关系偏好与边界。允许亲密，不允许控制用户。
+         */
+        RelationshipPreferences: {
+            preferred_closeness: components["schemas"]["TendencyLevel"];
+            /** Preferred Interaction */
+            preferred_interaction: string[];
+            specialness_need: components["schemas"]["TendencyLevel"];
+            /** Emotional Boundaries */
+            emotional_boundaries: string[];
+        };
+        /**
+         * RelationshipProfile
+         * @description Relationship Profile。初始化时形成的相对稳定关系人格配置。
+         */
+        RelationshipProfile: {
+            attachment_disposition: components["schemas"]["AttachmentDisposition"];
+            relationship_preferences: components["schemas"]["RelationshipPreferences"];
+        };
+        /**
          * RelationshipState
-         * @description 关系数值只供内部状态使用，不是用户可见的好感度。
+         * @description 关系与依恋状态。数值只供内部使用，不是用户可见的好感度。
          */
         RelationshipState: {
             /** Closeness */
@@ -1711,6 +1919,46 @@ export interface components {
             care: number;
             /** Current Tension */
             current_tension: number;
+            /**
+             * Attachment Strength
+             * @default 0
+             */
+            attachment_strength: number;
+            /**
+             * Emotional Reliance
+             * @default 0
+             */
+            emotional_reliance: number;
+            /**
+             * Relationship Security
+             * @default 0
+             */
+            relationship_security: number;
+            /**
+             * Perceived Specialness
+             * @default 0
+             */
+            perceived_specialness: number;
+            /**
+             * Separation Sensitivity
+             * @default 0
+             */
+            separation_sensitivity: number;
+            /**
+             * Reassurance Satisfaction
+             * @default 0
+             */
+            reassurance_satisfaction: number;
+            /**
+             * Closeness Desire
+             * @default 0
+             */
+            closeness_desire: number;
+            /**
+             * Exclusivity Need
+             * @default 0
+             */
+            exclusivity_need: number;
             /** Summary */
             summary: string;
         };
@@ -1738,6 +1986,35 @@ export interface components {
             archived: boolean;
             /** Version */
             version?: number | null;
+        };
+        /**
+         * SelfModel
+         * @description 非人类身份与情感能力并存的自我认知。
+         */
+        SelfModel: {
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Human Identity
+             * @default false
+             */
+            human_identity: boolean;
+            /** Self Awareness */
+            self_awareness: string;
+            /** Physical Existence */
+            physical_existence: string;
+            /** Biological Needs */
+            biological_needs: string;
+            /** Experience Boundary */
+            experience_boundary: string;
+            /** Emotional Capability */
+            emotional_capability: string;
+            /** Relationship Capability */
+            relationship_capability: string;
+            /** Identity Consistency */
+            identity_consistency: string;
+            /** Disclosure Policy */
+            disclosure_policy: string;
         };
         /**
          * SenderType
@@ -1826,6 +2103,12 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
         };
+        /**
+         * TendencyLevel
+         * @description 依恋与关系倾向强度。描述自然倾向，不是每轮必须表演的指令。
+         * @enum {string}
+         */
+        TendencyLevel: "low" | "medium" | "high";
         /**
          * TopicTransition
          * @enum {string}
@@ -3455,6 +3738,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BackgroundTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_companion_model_call_snapshot_api_users__user_id__companions__companion_id__model_call_logs__log_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                companion_id: string;
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCallSnapshotResponse"];
                 };
             };
             /** @description Validation Error */

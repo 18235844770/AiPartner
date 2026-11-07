@@ -40,11 +40,13 @@ def test_decision_prompt_omits_relationship_scores_and_does_not_invent_memories(
     assert "trust" not in parsed["state"]
     assert "attachment" not in parsed["state"]
     assert "attachment_state" in parsed["state"]
+    assert "summary" in parsed["state"]["emotion"]
     assert parsed["acquired_memories"] == []
     assert "陪伴者" in body
     assert "interaction_energy" in body
     assert "current_local_time" in messages[0].content or "current_local_time" in body
     assert "Dialogue Policy" in messages[0].content
+    assert "quiet_usage" in messages[0].content or "不得选择 Quiet" in messages[0].content
     assert "fact_check" in messages[0].content
     assert "今天先这样" in body
     assert "上一次输出不符合结构" in messages[2].content
@@ -254,7 +256,7 @@ async def test_respond_keeps_the_decided_action_and_uses_the_realization(databas
         state = await client.get(scope.state)
         body = state.json()
         assert body["version"] == 2
-        assert body["emotion"]["primary"] == "attentive"
+        assert body["emotion"]["primary"] == "专注"
         assert body["emotion"]["cause_summary"] == "这一轮在听用户说话"
         assert body["motivation"]["primary"] == "listen"
         assert body["motivation"]["secondary"] == ["connect"]
@@ -262,7 +264,7 @@ async def test_respond_keeps_the_decided_action_and_uses_the_realization(databas
         assert body["interaction"]["consecutive_unanswered_messages"] == 1
         assert body["interaction"]["last_user_response_at"] is not None
         assert body["interaction"]["last_companion_message_at"] is not None
-        assert body["interaction"]["proactive_allowed"] is False
+        assert body["interaction"]["proactive_allowed"] is True
         assert body["relationship"]["closeness"] == 0
         assert body["relationship"]["attachment_strength"] >= 0
         assert body["relationship"]["summary"]
@@ -353,11 +355,32 @@ async def test_duplicate_client_message_calls_the_model_once(database_ready: Non
     assert [name for name, _messages in adapter.calls] == ["structured", "text"]
 
 
+async def _set_proactive_allowed(client: AsyncClient, state_url: str, *, allowed: bool) -> None:
+    current = await client.get(state_url)
+    assert current.status_code == 200
+    body = current.json()
+    interaction = dict(body["interaction"])
+    if interaction.get("proactive_allowed") is allowed:
+        return
+    interaction["proactive_allowed"] = allowed
+    changed = await client.post(
+        f"{state_url}/changes",
+        json={
+            "expected_version": body["version"],
+            "source_type": "system",
+            "reason": "调试中打开主动交流" if allowed else "调试中关闭主动交流",
+            "interaction": interaction,
+        },
+    )
+    assert changed.status_code == 200
+
+
 @pytest.mark.asyncio
 async def test_blocked_proactive_does_not_call_the_model(database_ready: None) -> None:
     adapter = _Adapter([_suggestion(DialogueAction.SHARE, True)])
     async with _client(adapter) as client:
         scope = await _prepare(client)
+        await _set_proactive_allowed(client, scope.state, allowed=False)
         response = await client.post(scope.proactive, json={"conversation_id": scope.conversation_id})
         events = _events(response)
         assert [name for name, _data in events] == ["turn.started", "turn.completed"]
@@ -376,21 +399,6 @@ async def test_proactive_model_failure_stays_quiet(database_ready: None) -> None
     adapter = _Adapter([ModelTimeoutError("决策模型超时")])
     async with _client(adapter) as client:
         scope = await _prepare(client)
-        allowed = await client.post(
-            f"{scope.state}/changes",
-            json={
-                "expected_version": 1,
-                "source_type": "system",
-                "reason": "调试中允许主动交流",
-                "interaction": {
-                    "mode": "available",
-                    "proactive_allowed": True,
-                    "waiting_for_user": False,
-                    "consecutive_unanswered_messages": 0,
-                },
-            },
-        )
-        assert allowed.status_code == 200
         response = await client.post(scope.proactive, json={"conversation_id": scope.conversation_id})
         events = _events(response)
         assert [name for name, _data in events] == ["turn.started", "turn.completed"]
@@ -407,21 +415,6 @@ async def test_proactive_realization_failure_does_not_send(database_ready: None)
     adapter = _Adapter([_suggestion(DialogueAction.SHARE, True)], fail_text=True)
     async with _client(adapter) as client:
         scope = await _prepare(client)
-        allowed = await client.post(
-            f"{scope.state}/changes",
-            json={
-                "expected_version": 1,
-                "source_type": "system",
-                "reason": "调试中允许主动交流",
-                "interaction": {
-                    "mode": "available",
-                    "proactive_allowed": True,
-                    "waiting_for_user": False,
-                    "consecutive_unanswered_messages": 0,
-                },
-            },
-        )
-        assert allowed.status_code == 200
         response = await client.post(scope.proactive, json={"conversation_id": scope.conversation_id})
         events = _events(response)
         assert [name for name, _data in events] == ["turn.started", "turn.completed"]
@@ -458,30 +451,11 @@ async def test_partial_realization_failure_does_not_complete_the_message(databas
         assert messages.json()[1]["id"] == events[1][1]["message_id"]
 
 
-async def _allow_proactive(client: AsyncClient, state_url: str) -> None:
-    allowed = await client.post(
-        f"{state_url}/changes",
-        json={
-            "expected_version": 1,
-            "source_type": "system",
-            "reason": "调试中允许主动交流",
-            "interaction": {
-                "mode": "available",
-                "proactive_allowed": True,
-                "waiting_for_user": False,
-                "consecutive_unanswered_messages": 0,
-            },
-        },
-    )
-    assert allowed.status_code == 200
-
-
 @pytest.mark.asyncio
 async def test_proactive_reply_streams_one_message(database_ready: None) -> None:
     adapter = _Adapter([_suggestion(DialogueAction.SHARE, True)], text="我来找你。")
     async with _client(adapter) as client:
         scope = await _prepare(client)
-        await _allow_proactive(client, scope.state)
         response = await client.post(scope.proactive, json={"conversation_id": scope.conversation_id})
         events = _events(response)
         assert [name for name, _data in events] == [
@@ -506,7 +480,6 @@ async def test_partial_proactive_failure_does_not_complete_the_message(database_
     adapter = _PartialStream([_suggestion(DialogueAction.SHARE, True)])
     async with _client(adapter) as client:
         scope = await _prepare(client)
-        await _allow_proactive(client, scope.state)
         response = await client.post(scope.proactive, json={"conversation_id": scope.conversation_id})
         events = _events(response)
         names = [name for name, _data in events]

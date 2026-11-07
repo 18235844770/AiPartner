@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -165,7 +166,13 @@ async def test_turn_uses_eligible_memories_without_promoting_them(database_ready
         assert "我还是喜欢喝茶" in prompt
         assert "retrieval_score" not in prompt
         assert "promotion_score" not in prompt
-        assert "closeness" not in prompt
+        # 不把旧的关系总分当作可见好感度；attachment_state.closeness_desire 是内部依恋字段，允许出现。
+        parsed_prompt = json.loads(prompt)
+        state = parsed_prompt["state"]
+        assert "closeness" not in state
+        assert "trust" not in state
+        assert "attachment" not in state
+        assert "attachment_state" in state
         tea = await client.get(f"/api/users/{scope.user_id}/companions/{scope.companion_id}/memories/{created['tea']}")
         assert tea.json()["status"] == "candidate"
         async with get_session_factory()() as session:

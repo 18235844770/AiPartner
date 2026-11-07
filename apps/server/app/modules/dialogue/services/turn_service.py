@@ -25,6 +25,7 @@ from app.modules.dialogue.api.stream_schemas import (
 )
 from app.modules.dialogue.domain.context import decision_messages, final_send, realization_messages
 from app.modules.dialogue.domain.enums import DecisionStatus, DialogueAction, TriggerType
+from app.modules.dialogue.domain.quiet_policy import apply_quiet_gate
 from app.modules.dialogue.domain.suggestion import (
     FALLBACK_USER_TEXT,
     ModelDecisionSuggestion,
@@ -44,9 +45,10 @@ from app.modules.memory.services.context_service import MemoryContextService
 from app.modules.memory.services.retrieval import MemoryRetrievalService
 from app.modules.model_adapter.domain.messages import ChatMessage, TextCompletion
 from app.modules.model_adapter.services.model_adapter import ModelCallScope
-from app.modules.persona.domain.archive import AttachmentDisposition, PersonaArchive
+from app.modules.persona.domain.archive import AttachmentDisposition, PersonaArchive, RelationshipSelfAssertion
 from app.modules.persona.services.persona_service import PersonaService
 from app.modules.state.api.schemas import ApplyStateChangeRequest
+from app.modules.state.domain.emotion import levels_summary
 from app.modules.state.domain.enums import InteractionEnergy, InteractionMode, StateSourceType
 from app.modules.state.domain.snapshots import EmotionState, InteractionState, MotivationState, RelationshipState
 from app.modules.state.services.state_service import StateService
@@ -95,6 +97,7 @@ class TurnContext:
     current_local_time: str | None = None
     emotion_detail: dict[str, object] | None = None
     relationship_detail: dict[str, object] | None = None
+    consecutive_quiet_turns: int = 0
 
     def decision_input(self, repair: bool) -> list[ChatMessage]:
         return decision_messages(
@@ -241,6 +244,13 @@ class DialogueTurnService:
                 context_versions=context.versions or {},
             )
             suggestion, validation = await self._choose(context, scope, user_fallback)
+            suggestion, gate = apply_quiet_gate(
+                suggestion,
+                user_message=content,
+                consecutive_quiet=context.consecutive_quiet_turns,
+                user_triggered=True,
+            )
+            validation = {**validation, **gate}
             action, should_send = final_send(suggestion)
             decision = await self._save(
                 session,
@@ -829,6 +839,8 @@ class DialogueTurnService:
                 "possessiveness": emotion.possessiveness,
                 "emotional_tension": emotion.emotional_tension,
                 "triggers": list(emotion.triggers),
+                "levels": dict(emotion.levels),
+                "summary": levels_summary(emotion.levels),
             },
             relationship_detail={
                 "attachment_strength": relationship.attachment_strength,
@@ -840,6 +852,7 @@ class DialogueTurnService:
                 "closeness_desire": relationship.closeness_desire,
                 "exclusivity_need": relationship.exclusivity_need,
             },
+            consecutive_quiet_turns=interaction.consecutive_quiet_turns,
         )
 
     async def _choose(
@@ -921,7 +934,7 @@ class DialogueTurnService:
             return
         try:
             current = await self._states.get_current(session, user_id, companion_id)
-            disposition = await self._attachment_disposition(session, user_id, companion_id)
+            disposition, self_assertion = await self._relationship_tendencies(session, user_id, companion_id)
             relationship_kind = None
             if suggestion.relationship_motivation is not None:
                 relationship_kind = suggestion.relationship_motivation.kind
@@ -939,6 +952,7 @@ class DialogueTurnService:
                 user_spoke=user_spoke,
                 now=datetime.now(UTC),
                 disposition=disposition,
+                self_assertion=self_assertion,
                 self_motivation_kind=suggestion.self_motivation.kind,
                 relationship_motivation_kind=relationship_kind,
                 user_message=user_message,
@@ -967,32 +981,41 @@ class DialogueTurnService:
         except Exception:
             logger.exception("turn state update failed for decision %s", decision_id)
 
-    async def _attachment_disposition(
+    async def _relationship_tendencies(
         self,
         session: AsyncSession,
         user_id: uuid.UUID,
         companion_id: uuid.UUID,
-    ) -> AttachmentDisposition | None:
+    ) -> tuple[AttachmentDisposition | None, RelationshipSelfAssertion | None]:
         try:
             _profile, version = await self._personas.get_current(session, user_id, companion_id)
         except AppError:
-            return None
+            return None, None
         archive = version.archive if isinstance(version.archive, dict) else None
         if not archive:
-            return None
+            return None, None
         try:
-            return PersonaArchive.model_validate(archive).relationship.attachment_disposition
+            relationship = PersonaArchive.model_validate(archive).relationship
+            return relationship.attachment_disposition, relationship.self_assertion
         except ValidationError:
             raw = archive.get("relationship")
             if not isinstance(raw, dict):
-                return None
-            disposition = raw.get("attachment_disposition")
-            if not isinstance(disposition, dict):
-                return None
-            try:
-                return AttachmentDisposition.model_validate(disposition)
-            except ValidationError:
-                return None
+                return None, None
+            disposition = None
+            assertion = None
+            raw_disposition = raw.get("attachment_disposition")
+            if isinstance(raw_disposition, dict):
+                try:
+                    disposition = AttachmentDisposition.model_validate(raw_disposition)
+                except ValidationError:
+                    disposition = None
+            raw_assertion = raw.get("self_assertion")
+            if isinstance(raw_assertion, dict):
+                try:
+                    assertion = RelationshipSelfAssertion.model_validate(raw_assertion)
+                except ValidationError:
+                    assertion = None
+            return disposition, assertion
 
     async def _link_calls(self, trace_id: uuid.UUID, decision_id: uuid.UUID) -> None:
         try:

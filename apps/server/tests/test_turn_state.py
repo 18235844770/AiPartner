@@ -62,7 +62,7 @@ def test_reply_updates_emotion_interaction_and_motivation_without_changing_score
     )
     assert plan is not None
     assert plan.emotion is not None
-    assert plan.emotion.primary == "attentive"
+    assert plan.emotion.primary == "专注"
     assert plan.interaction is not None
     assert plan.interaction.last_user_response_at == now
     assert plan.interaction.last_companion_message_at == now
@@ -166,6 +166,33 @@ def test_user_message_ends_a_quiet_period() -> None:
     assert plan.interaction is not None
     assert plan.interaction.mode == InteractionMode.AVAILABLE
     assert plan.interaction.quiet_until is None
+    assert plan.interaction.consecutive_quiet_turns == 1
+    assert plan.emotion is not None
+    assert "levels" in plan.emotion.model_dump()
+
+
+def test_reply_resets_consecutive_quiet_turns() -> None:
+    prior = _interaction()
+    prior = prior.model_copy(update={"consecutive_quiet_turns": 2})
+    plan = plan_turn_state(
+        action=DialogueAction.RESPOND,
+        secondary_actions=[],
+        should_send=True,
+        fallback=False,
+        blocked=False,
+        confidence=0.6,
+        emotion=_emotion(),
+        relationship=_relationship(),
+        interaction=prior,
+        motivation=_motivation(),
+        user_spoke=True,
+        now=datetime(2026, 11, 6, 18, tzinfo=UTC),
+    )
+    assert plan is not None
+    assert plan.interaction is not None
+    assert plan.interaction.consecutive_quiet_turns == 0
+    assert plan.emotion is not None
+    assert plan.emotion.levels["comfort"] > 0 or plan.emotion.levels["affection"] > 0
 
 
 def test_proactive_send_counts_an_unanswered_message() -> None:
@@ -191,4 +218,4 @@ def test_proactive_send_counts_an_unanswered_message() -> None:
     assert plan.relationship.closeness == 0.25
     assert plan.relationship.attachment_strength > 0
     assert plan.emotion is not None
-    assert plan.emotion.primary == "engaged"
+    assert plan.emotion.primary in {"投入", "兴奋", "开心"}

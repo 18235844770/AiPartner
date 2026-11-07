@@ -13,7 +13,23 @@ from app.modules.dialogue.domain.attachment_progress import (
     plan_attachment_progress,
 )
 from app.modules.dialogue.domain.enums import DialogueAction, SelfMotivationKind
-from app.modules.persona.domain.archive import AttachmentDisposition
+from app.modules.dialogue.domain.relationship_assertion import (
+    build_relationship_assertion,
+    confrontation_persona_factor,
+    resentment_persona_factor,
+    user_message_has_friction,
+)
+from app.modules.persona.domain.archive import AttachmentDisposition, RelationshipSelfAssertion, default_self_assertion
+from app.modules.state.domain.emotion import (
+    ACTION_EMOTION_LABELS,
+    EmotionDeltaEvent,
+    EmotionEventKind,
+    apply_events,
+    emotion_display_name,
+    normalize_levels,
+    primary_from_levels,
+    sync_legacy_from_levels,
+)
 from app.modules.state.domain.enums import InteractionEnergy, InteractionMode, MotivationKind
 from app.modules.state.domain.snapshots import (
     EmotionInput,
@@ -23,6 +39,13 @@ from app.modules.state.domain.snapshots import (
     RelationshipState,
 )
 
+_ASSERTION_MOTIVES = {
+    SelfMotivationKind.ASSERT_STANCE,
+    SelfMotivationKind.EXPRESS_GRIEVANCE,
+    SelfMotivationKind.SEEK_ACKNOWLEDGMENT,
+}
+_NEGATIVE_PRESERVE = 20.0
+
 _EMOTION = {
     DialogueAction.RESPOND: ("attentive", 0.25, 0.5, 0.25, "这一轮在听用户说话"),
     DialogueAction.SHARE: ("engaged", 0.5, 0.5, 0.5, "这一轮有自己想说的内容"),
@@ -31,6 +54,15 @@ _EMOTION = {
     DialogueAction.CONTINUE: ("engaged", 0.5, 0.5, 0.25, "这一轮还想把话题留住"),
     DialogueAction.CLOSE: ("calm", 0.0, 0.0, 0.0, "这一轮选择结束这次交流"),
     DialogueAction.QUIET: ("calm", 0.0, 0.0, 0.0, "这一轮选择不发消息"),
+}
+_EMOTION_EVENTS: dict[DialogueAction, EmotionEventKind] = {
+    DialogueAction.RESPOND: EmotionEventKind.ATTENTIVE_LISTEN,
+    DialogueAction.SHARE: EmotionEventKind.SHARED_INTEREST,
+    DialogueAction.ASK: EmotionEventKind.CURIOSITY,
+    DialogueAction.REACT: EmotionEventKind.POSITIVE_INTERACTION,
+    DialogueAction.CONTINUE: EmotionEventKind.MEANINGFUL_CONVERSATION,
+    DialogueAction.CLOSE: EmotionEventKind.QUIET_REST,
+    DialogueAction.QUIET: EmotionEventKind.QUIET_REST,
 }
 _MOTIVATION = {
     DialogueAction.RESPOND: MotivationKind.LISTEN,
@@ -76,6 +108,7 @@ def plan_turn_state(
     user_spoke: bool,
     now: datetime,
     disposition: AttachmentDisposition | None = None,
+    self_assertion: RelationshipSelfAssertion | None = None,
     self_motivation_kind: SelfMotivationKind | None = None,
     relationship_motivation_kind: SelfMotivationKind | None = None,
     user_message: str | None = None,
@@ -83,14 +116,23 @@ def plan_turn_state(
     """被拦住，或模型失败且这一轮没有发生交流时，不写状态。"""
     if blocked or (fallback and not user_spoke and not should_send):
         return None
+    assertion = self_assertion or default_self_assertion()
     next_interaction = _interaction(
         interaction,
         should_send=should_send,
         user_spoke=user_spoke,
         now=now,
     )
-    next_emotion = None if fallback else _emotion(action, emotion)
+    next_emotion = None if fallback else _emotion(
+        action,
+        emotion,
+        self_motivation_kind=self_motivation_kind,
+        relationship_motivation_kind=relationship_motivation_kind,
+        user_message=user_message,
+        self_assertion=assertion,
+    )
     next_motivation = None if fallback else _motivation(action, secondary_actions, confidence, motivation)
+    intimacy_dampen = _intimacy_dampen(emotion.levels, assertion)
     attachment = _attachment(
         relationship,
         emotion if next_emotion is None else _emotion_state_from_input(next_emotion, emotion),
@@ -104,6 +146,7 @@ def plan_turn_state(
         last_user_response_at=interaction.last_user_response_at,
         now=now,
         fallback=fallback,
+        intimacy_dampen=intimacy_dampen,
     )
     next_relationship = attachment.relationship
     if attachment.emotion is not None:
@@ -155,6 +198,7 @@ def _attachment(
     last_user_response_at: datetime | None,
     now: datetime,
     fallback: bool,
+    intimacy_dampen: float = 0.0,
 ) -> AttachmentProgress:
     evidence = collect_attachment_evidence(
         user_spoke=user_spoke,
@@ -172,6 +216,7 @@ def _attachment(
         disposition,
         evidence,
         fallback=fallback,
+        intimacy_dampen=intimacy_dampen,
     )
 
 
@@ -189,6 +234,10 @@ def _interaction(
         updated.last_user_response_at = now
         updated.consecutive_unanswered_messages = 1 if should_send else 0
         updated.waiting_for_user = should_send
+        if should_send:
+            updated.consecutive_quiet_turns = 0
+        else:
+            updated.consecutive_quiet_turns = current.consecutive_quiet_turns + 1
         if current.mode == InteractionMode.QUIET:
             updated.mode = InteractionMode.AVAILABLE
             updated.quiet_until = None
@@ -196,6 +245,7 @@ def _interaction(
             updated.energy = InteractionEnergy.NORMAL
     if should_send:
         updated.last_companion_message_at = now
+        updated.consecutive_quiet_turns = 0
         if not user_spoke:
             updated.consecutive_unanswered_messages = current.consecutive_unanswered_messages + 1
             updated.waiting_for_user = True
@@ -204,20 +254,74 @@ def _interaction(
     return updated
 
 
-def _emotion(action: DialogueAction, current: EmotionState) -> EmotionInput | None:
-    primary, intensity, valence, arousal, cause = _EMOTION[action]
-    proposed = EmotionInput(
-        primary=primary,
-        secondary=[],
-        intensity=intensity,
-        valence=valence,
-        arousal=arousal,
-        jealousy=current.jealousy,
-        possessiveness=current.possessiveness,
-        emotional_tension=current.emotional_tension,
-        triggers=list(current.triggers),
-        cause_summary=cause,
+def _emotion(
+    action: DialogueAction,
+    current: EmotionState,
+    *,
+    self_motivation_kind: SelfMotivationKind | None,
+    relationship_motivation_kind: SelfMotivationKind | None,
+    user_message: str | None,
+    self_assertion: RelationshipSelfAssertion,
+) -> EmotionInput | None:
+    primary_key, intensity, valence, arousal, cause = _EMOTION[action]
+    action_label = ACTION_EMOTION_LABELS.get(primary_key, emotion_display_name(primary_key))
+    levels_now = normalize_levels(current.levels)
+    preserve = max(levels_now["anger"], levels_now["hurt"]) >= _NEGATIVE_PRESERVE
+    mild_intensity = 0.18 if preserve else 0.45
+    events = [
+        EmotionDeltaEvent(
+            kind=_EMOTION_EVENTS[action],
+            intensity=mild_intensity,
+            confidence=1.0,
+            reason=cause,
+        )
+    ]
+    events.extend(
+        _conflict_events(
+            self_motivation_kind=self_motivation_kind,
+            relationship_motivation_kind=relationship_motivation_kind,
+            user_message=user_message,
+            self_assertion=self_assertion,
+        )
     )
+    after_levels, deltas = apply_events(current.levels, events)
+    if preserve:
+        after_levels = _preserve_negative(levels_now, after_levels)
+    causes = [cause]
+    for item in events[1:]:
+        causes.append(item.reason)
+    cause_summary = "；".join(causes)
+    legacy = sync_legacy_from_levels(after_levels) if deltas else None
+    if legacy is None:
+        levels = normalize_levels(after_levels)
+        proposed = EmotionInput(
+            primary=primary_from_levels(levels, fallback=action_label),
+            secondary=[],
+            intensity=intensity,
+            valence=valence,
+            arousal=arousal,
+            jealousy=current.jealousy,
+            possessiveness=current.possessiveness,
+            emotional_tension=current.emotional_tension,
+            triggers=list(current.triggers),
+            cause_summary=cause_summary,
+            levels=levels,
+        )
+    else:
+        derived_intensity = float(legacy["intensity"])
+        proposed = EmotionInput(
+            primary=primary_from_levels(after_levels, fallback=action_label),
+            secondary=[str(item) for item in legacy["secondary"]],  # type: ignore[index]
+            intensity=max(intensity, derived_intensity),
+            valence=float(legacy["valence"]),
+            arousal=float(legacy["arousal"]),
+            jealousy=float(legacy["jealousy"]),
+            possessiveness=current.possessiveness,
+            emotional_tension=current.emotional_tension,
+            triggers=list(current.triggers),
+            cause_summary=cause_summary,
+            levels=after_levels,
+        )
     current_input = EmotionInput(
         primary=current.primary,
         secondary=list(current.secondary),
@@ -229,10 +333,79 @@ def _emotion(action: DialogueAction, current: EmotionState) -> EmotionInput | No
         emotional_tension=current.emotional_tension,
         triggers=list(current.triggers),
         cause_summary=current.cause_summary,
+        levels=normalize_levels(current.levels),
     )
     if proposed == current_input:
         return None
     return proposed
+
+
+def _conflict_events(
+    *,
+    self_motivation_kind: SelfMotivationKind | None,
+    relationship_motivation_kind: SelfMotivationKind | None,
+    user_message: str | None,
+    self_assertion: RelationshipSelfAssertion,
+) -> list[EmotionDeltaEvent]:
+    motive = relationship_motivation_kind or self_motivation_kind
+    friction = user_message_has_friction(user_message)
+    events: list[EmotionDeltaEvent] = []
+    resent = resentment_persona_factor(self_assertion.resentment_tendency)
+    confront = confrontation_persona_factor(self_assertion.confrontation_tendency)
+    if motive == SelfMotivationKind.EXPRESS_GRIEVANCE or (friction and motive in _ASSERTION_MOTIVES):
+        events.append(
+            EmotionDeltaEvent(
+                kind=EmotionEventKind.CONFLICT,
+                intensity=0.55,
+                confidence=1.0,
+                persona_factor=max(resent, confront),
+                reason="关系摩擦被明确表达或触达",
+            )
+        )
+    elif motive == SelfMotivationKind.ASSERT_STANCE and friction:
+        events.append(
+            EmotionDeltaEvent(
+                kind=EmotionEventKind.DISAPPOINTMENT,
+                intensity=0.5,
+                confidence=1.0,
+                persona_factor=resent,
+                reason="感受被否定后坚持立场",
+            )
+        )
+    elif motive == SelfMotivationKind.SEEK_ACKNOWLEDGMENT:
+        events.append(
+            EmotionDeltaEvent(
+                kind=EmotionEventKind.DISAPPOINTMENT,
+                intensity=0.4,
+                confidence=1.0,
+                persona_factor=resent,
+                reason="希望对方理解未满足的关系需求",
+            )
+        )
+    elif friction:
+        events.append(
+            EmotionDeltaEvent(
+                kind=EmotionEventKind.REJECTION,
+                intensity=0.4,
+                confidence=0.9,
+                persona_factor=resent,
+                reason="用户话语含有否定或轻视感受的痕迹",
+            )
+        )
+    return events
+
+
+def _preserve_negative(before: dict[str, float], after: dict[str, float]) -> dict[str, float]:
+    """冲突未解时，mild 正向事件不得把愤怒/委屈冲掉。"""
+    merged = dict(after)
+    for key in ("anger", "hurt", "sadness"):
+        if before.get(key, 0.0) >= _NEGATIVE_PRESERVE:
+            merged[key] = max(float(after.get(key, 0.0)), float(before[key]) * 0.92)
+    return merged
+
+
+def _intimacy_dampen(levels: dict[str, float] | None, assertion: RelationshipSelfAssertion) -> float:
+    return build_relationship_assertion(assertion, levels).intimacy_dampen
 
 
 def _merge_emotion(
@@ -246,6 +419,8 @@ def _merge_emotion(
     cause = base.cause_summary
     if attachment_emotion.cause_summary and attachment_emotion.cause_summary not in cause:
         cause = f"{base.cause_summary}；{attachment_emotion.cause_summary}"
+    levels = normalize_levels(base.levels)
+    levels["jealousy"] = round(attachment_emotion.jealousy * 100.0, 2)
     return base.model_copy(
         update={
             "jealousy": attachment_emotion.jealousy,
@@ -253,6 +428,7 @@ def _merge_emotion(
             "emotional_tension": attachment_emotion.emotional_tension,
             "triggers": list(attachment_emotion.triggers),
             "cause_summary": cause,
+            "levels": levels,
         }
     )
 
@@ -269,6 +445,7 @@ def _emotion_state_from_input(value: EmotionInput, current: EmotionState) -> Emo
         emotional_tension=value.emotional_tension,
         triggers=list(value.triggers),
         cause_summary=value.cause_summary,
+        levels=normalize_levels(value.levels),
         updated_at=current.updated_at,
     )
 

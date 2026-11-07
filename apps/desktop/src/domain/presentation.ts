@@ -128,12 +128,57 @@ const LABELS: Record<string, string> = {
   user_message_source: "用户消息",
   connect: "连接",
   listen: "倾听",
-  comfort: "安慰",
+  comfort: "安心",
   understand: "理解",
   play: "玩闹",
   resolve_conflict: "化解张力",
   rest: "休息",
+  calm: "平静",
+  attentive: "专注",
+  engaged: "投入",
+  curious: "好奇",
+  moved: "触动",
+  happy: "开心",
+  joy: "开心",
+  affection: "亲密",
+  longing: "想念",
+  excitement: "兴奋",
+  sadness: "难过",
+  anxiety: "不安",
+  jealousy: "嫉妒",
+  anger: "愤怒",
+  hurt: "委屈",
 };
+
+export function formatUnit(value: number | null | undefined, digits = 3): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "—";
+  }
+  return value.toFixed(digits);
+}
+
+/** 将 0–1 内部数值格式化为百分比，100% 为最高。 */
+export function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "—";
+  }
+  const ratio = value > 1 ? value / 100 : value;
+  const clamped = Math.max(0, Math.min(1, ratio));
+  return `${Math.round(clamped * 100)}%`;
+}
+
+export function emotionLevelEntries(
+  levels: Record<string, number> | null | undefined,
+): Array<{ key: string; label: string; value: number }> {
+  if (!levels) {
+    return [];
+  }
+  return Object.entries(levels)
+    .map(([key, value]) => ({ key, label: labelOf(key), value: Number(value) || 0 }))
+    .filter((item) => item.value >= 15)
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 4);
+}
 
 export function labelOf(value: string): string {
   return LABELS[value] ?? value;

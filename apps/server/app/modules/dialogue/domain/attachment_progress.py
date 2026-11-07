@@ -106,6 +106,7 @@ def plan_attachment_progress(
     evidence: AttachmentEvidence,
     *,
     fallback: bool,
+    intimacy_dampen: float = 0.0,
 ) -> AttachmentProgress:
     """没有证据或降级回合时不改依恋；有证据时按倾向幅度更新。"""
     if fallback or not _has_progress_signal(evidence):
@@ -158,6 +159,8 @@ def plan_attachment_progress(
     elif evidence.mutual_exchange:
         # 普通互回应增量很小，避免按次数线性堆高；用户要空间时不借互回抬升依恋。
         strength = _toward(strength, Decimal("0.006") * att, cap)
+        # 依赖倾向调节情感依靠的缓慢累积，与依恋强度分开。
+        reliance = _toward(reliance, Decimal("0.01") * dep / indep, reliance_cap)
         security = _clamp(security + Decimal("0.008"))
         reasons.append("双方完成一次交流")
 
@@ -166,18 +169,24 @@ def plan_attachment_progress(
         specialness = _clamp(specialness + Decimal("0.01") * att)
         reasons.append("本轮有连接性表达")
 
+    dampen = _clamp(Decimal(str(max(0.0, min(1.0, intimacy_dampen)))))
+    intimacy_scale = Decimal("1.0") - (dampen * Decimal("0.65"))
+
     if not evidence.user_needs_space and evidence.relationship_motive:
-        desire = _clamp(desire + Decimal("0.015") * att)
+        desire = _clamp(desire + Decimal("0.015") * att * intimacy_scale)
         reasons.append("存在明确的关系动机")
+        if dampen >= Decimal("0.35"):
+            desire = _clamp(desire - Decimal("0.02") * dampen)
+            reasons.append("负面情绪抑制亲密表达意愿")
 
     if evidence.user_misses or evidence.user_affection:
         bump = Decimal("0.035") if evidence.user_affection else Decimal("0.028")
-        strength = _toward(strength, bump * att, cap)
-        reliance = _toward(reliance, Decimal("0.02") * dep / indep, reliance_cap)
-        specialness = _clamp(specialness + Decimal("0.04") * att)
-        reassurance = _clamp(reassurance + Decimal("0.05"))
-        desire = _clamp(desire + Decimal("0.02"))
-        tension = _clamp(tension - Decimal("0.05"))
+        strength = _toward(strength, bump * att * intimacy_scale, cap)
+        reliance = _toward(reliance, Decimal("0.02") * dep / indep * intimacy_scale, reliance_cap)
+        specialness = _clamp(specialness + Decimal("0.04") * att * intimacy_scale)
+        reassurance = _clamp(reassurance + Decimal("0.05") * intimacy_scale)
+        desire = _clamp(desire + Decimal("0.02") * intimacy_scale)
+        tension = _clamp(tension - Decimal("0.05") * intimacy_scale)
         reasons.append("用户表达了亲密或想念")
 
     if evidence.user_reassurance:
@@ -191,11 +200,12 @@ def plan_attachment_progress(
     if evidence.rival_mention:
         exclusivity = _clamp(exclusivity + Decimal("0.04") * excl)
         specialness = _clamp(specialness - Decimal("0.02"))
-        jealousy = _clamp(jealousy + Decimal("0.08") * _WEIGHT[disposition.jealousy_tendency])
+        # 一次提及应可感知（约中等 20%），高嫉妒倾向更高，但仍远低于锁死控制。
+        jealousy = _clamp(jealousy + Decimal("0.20") * _WEIGHT[disposition.jealousy_tendency])
         possessiveness = _clamp(
             possessiveness + Decimal("0.05") * _WEIGHT[disposition.possessiveness_tendency]
         )
-        tension = _clamp(tension + Decimal("0.04"))
+        tension = _clamp(tension + Decimal("0.06") * _WEIGHT[disposition.jealousy_tendency])
         _push_trigger(triggers, "提到其他亲密对象")
         reasons.append("提到其他亲密对象，独占相关需求上升")
 
@@ -231,6 +241,8 @@ def plan_attachment_progress(
     )
     next_emotion = None
     if emotion_changed:
+        levels = dict(emotion.levels) if getattr(emotion, "levels", None) else {}
+        levels = {**levels, "jealousy": round(float(jealousy) * 100.0, 2)}
         next_emotion = EmotionInput(
             primary=emotion.primary,
             secondary=list(emotion.secondary),
@@ -241,7 +253,8 @@ def plan_attachment_progress(
             possessiveness=float(possessiveness),
             emotional_tension=float(tension),
             triggers=triggers,
-            cause_summary=emotion.cause_summary if not reasons else "；".join(reasons[:2]),
+            cause_summary=emotion.cause_summary if not reasons else "；".join(reasons[:3]),
+            levels=levels,
         )
     if proposed == current and next_emotion is None:
         return AttachmentProgress(None, None, ())

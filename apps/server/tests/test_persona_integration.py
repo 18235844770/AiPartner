@@ -159,6 +159,12 @@ async def _insert_persona(session, companion_id: uuid.UUID) -> tuple[uuid.UUID, 
                 "specialness_need": "high",
                 "emotional_boundaries": ["不控制对方"],
             },
+            "self_assertion": {
+                "assertiveness": "medium",
+                "resentment_tendency": "medium",
+                "confrontation_tendency": "medium",
+                "forgiveness_tendency": "medium",
+            },
         },
         "self_model": {
             "entity_type": "artificial_intelligence",

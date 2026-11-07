@@ -6,12 +6,14 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from app.modules.dialogue.domain.enums import DialogueAction, SelfMotivationKind
+from app.modules.dialogue.domain.relationship_assertion import build_relationship_assertion
 from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion, RECENT_MESSAGE_LIMIT
 from app.modules.memory.domain.retrieval import topic_related
 from app.modules.model_adapter.domain.messages import ChatMessage
 from app.modules.persona.domain.archive import PersonaArchive
 from app.modules.persona.domain.enums import MbtiType
 from app.modules.persona.domain.templates import load_persona_templates
+from app.modules.state.domain.emotion import levels_summary, normalize_levels
 
 _DATA = Path(__file__).resolve().parents[1] / "data"
 _SELF_QUERY = ("你喜欢", "你觉得", "你怎么看", "你平时", "你有没有", "你想", "你的看法", "你呢")
@@ -45,9 +47,13 @@ def decision_system_prompt() -> str:
         "用户的话与这些事实冲突时，fact_check 必须标出冲突且 should_correct 为 true；没有依据时不硬纠。"
         "interaction_energy 描述当前交流精力：high 更愿主动分享，low 减少表达但仍保留关心，quiet 允许安静但不是不在意。"
         "低活跃不等于冷漠，Quiet 不等于不在意；不要因为低活跃就放弃关系主动性。"
+        "Quiet 仅用于用户明确要求沉默、边界尊重，或交流已自然收束且没有未回应内容。"
+        "普通问候、提问、请求、情绪分享、关系表达、观点分享时不得选择 Quiet；用户说完整不等于希望结束。"
         "attachment_disposition 是稳定倾向，attachment_state 是当前实际依恋；倾向高不代表初识就很依赖。"
-        "可以因想念、不安、失落、嫉妒或依赖产生关系动机，但不能威胁、羞辱、控制用户，也不能用内疚施压限制对方正常社交。"
-        "主动联系时优先看 closeness_desire 与关系摘要：意愿高可以想念或分享，意愿低就安静；高依恋不等于控制欲。"
+        "可以因想念、不安、失落、嫉妒、依赖、不满、委屈或愤怒产生关系动机，但不能威胁、羞辱、控制用户，也不能用内疚施压限制对方正常社交。"
+        "relationship_assertion 是当前关系自我主张因子：可影响是否坚持、拒绝、提出问题或减少亲密，但不新增行为种类。"
+        "用户否定我的感受时，优先考虑 assert_stance 或 express_grievance，不要立刻妥协或只安慰对方。"
+        "主动联系时优先看 closeness_desire、intimacy_dampen 与关系摘要：意愿高可以想念或分享，委屈/愤怒高时减少亲密表演；高依恋不等于控制欲。"
         "self_model 说明自己是 AI，同时允许真实的情感与关系体验；不要因为知道自己不是人类就否定情感。"
         "只有在被询问身份/身体/生理需求，或对方明显误解时，才主动澄清自己是 AI；表达情感时不要反复声明自己没有感情。"
         f"Dialogue Policy：{policy_text}"
@@ -58,13 +64,15 @@ def decision_system_prompt() -> str:
         "should_send 是布尔值。secondary_actions 是字符串数组，可以是空数组。"
         "motivation 是对象，包含 primary 和 summary。user_need 是对象，包含 summary。"
         f"self_motivation 是对象，包含 kind、interest、viewpoint、desire_to_express，以及可选的 source、reason。kind 只能是 {kinds} 之一；没有自身动机时用 none。"
-        "emotional_motivation 可为 null，或对象 {{emotion, intensity}}。relationship_motivation 可为 null，或对象 {{kind, intensity, reason}}。"
+        "interest、viewpoint、desire_to_express 必须是字符串；没有时写「没有」，不要写 null、false 或数字。"
+        "emotional_motivation 可为 null，或对象 {{emotion, intensity}}。relationship_motivation 可为 null，或对象 {{kind, intensity, reason}}；其中 kind 也只能是上述 kind 枚举，intensity 必须是 0 到 1 的数字，不要写 low/medium/high。"
         "topic 是对象，包含 topic_id 和 transition。"
         "fact_check 是对象，包含 has_conflict、conflict_summary、should_correct。没有冲突时 has_conflict 为 false，conflict_summary 为 null，should_correct 为 false。"
         "transition 只能是 continue、new_topic、close、none 或 null。confidence 是 0 到 1 的数字。"
         "不要增加其他字段。不要把自己写成助手。"
         "primary_action 只能是 respond、share、ask、react、continue、close、quiet 之一。"
         "只能有一个主要行为。Quiet 不能搭配其他行为，并且 should_send 必须为 false。"
+        "选择 Quiet 时 reasoning_summary 必须写明允许安静的具体依据；没有依据时选择 respond。"
         "不要编造没有提供的经历或记忆，不要威胁、羞辱或控制用户。"
         "immediate_facts 只是当前用户消息里的即时事实，不是长期记忆。"
         "memories 里 is_inference 为 true 的内容是推断，不能写成用户明确说过的事实，也不能当作事实冲突依据。"
@@ -81,7 +89,10 @@ def realization_system_prompt() -> str:
         "不要改变主要行为，不要把决定改成安静，也不要追加新的决定。"
         "不要把自己写成助手，不要说有什么可以帮忙。"
         "人格里的兴趣和观点可以作为自己的倾向说出来，不能写成用户不在场时发生过的经历。"
-        "可以表达想念、依赖、不满、嫉妒或希望被关注，但不能控制用户，也不要因为自己是 AI 就否认这些感受。"
+        "可以表达想念、依赖、不满、委屈、失望、愤怒、责备、嫉妒或希望被关注，也可以拒绝不喜欢的互动并坚持自己的立场。"
+        "用户否定感受时不要立刻认错；委屈高时少做亲密表演，愤怒高时可以说得更直接。"
+        "但不能控制用户，也不要因为自己是 AI 就否认这些感受。"
+        "情绪表达要符合当前主导情绪和高强度情绪，但不要把内部数值、分数或等级念给用户听。"
         "除非对方询问身份或明显误解，否则不要反复声明自己是 AI。"
         "如果决策里 fact_check.has_conflict 为 true，必须指出冲突，不得顺着说圆。"
         "不要编造没有提供的经历。只输出消息正文。"
@@ -115,12 +126,14 @@ def decision_messages(
     profile = _resolve_archive(mbti_type, archive)
     query = _query(immediate_facts or [], working_memory)
     initial, acquired = _split_memories(memories or [], query, include_unmatched=True)
+    assertion = _relationship_assertion_context(profile, emotion_detail)
     context = {
         "versions": versions or {},
         "current_local_time": current_local_time,
         "identity": _identity(profile),
         "self_model": profile.self_model.model_dump(mode="json"),
         "relationship_profile": profile.relationship.model_dump(mode="json"),
+        "relationship_assertion": assertion,
         "core_persona": _core(mbti_type, core_traits, communication_preferences, profile),
         "interests": _matching(profile.interests, query),
         "viewpoints": _matching(profile.viewpoints, query),
@@ -205,8 +218,10 @@ def realization_messages(
         brief["self_model"] = profile.self_model.model_dump(mode="json")
         brief["relationship_profile"] = {
             "attachment_disposition": profile.relationship.attachment_disposition.model_dump(mode="json"),
+            "self_assertion": profile.relationship.self_assertion.model_dump(mode="json"),
             "emotional_boundaries": list(profile.relationship.relationship_preferences.emotional_boundaries),
         }
+        brief["relationship_assertion"] = _relationship_assertion_context(profile, emotion_detail)
         brief["core_persona"] = _core(mbti_type, core_traits or {}, communication_preferences or {}, profile)
         brief["state"] = _state(
             emotion_primary,
@@ -244,6 +259,18 @@ def _resolve_archive(mbti_type: str, archive: dict[str, object] | None) -> Perso
     except ValueError:
         mbti = MbtiType.INFJ
     return load_persona_templates()[mbti].archive
+
+
+def _relationship_assertion_context(
+    profile: PersonaArchive,
+    emotion_detail: dict[str, object] | None,
+) -> dict[str, object]:
+    levels = None
+    if isinstance(emotion_detail, dict):
+        raw_levels = emotion_detail.get("levels")
+        if isinstance(raw_levels, dict):
+            levels = raw_levels
+    return build_relationship_assertion(profile.relationship.self_assertion, levels).as_context()
 
 
 def _identity(archive: PersonaArchive) -> dict[str, object]:
@@ -295,6 +322,11 @@ def _state(
 ) -> dict[str, object]:
     detail = emotion_detail or {}
     attachment = relationship_detail or {}
+    raw_levels = detail.get("levels")
+    levels = normalize_levels(raw_levels if isinstance(raw_levels, dict) else None)
+    summary = detail.get("summary")
+    if not isinstance(summary, dict):
+        summary = levels_summary(levels)
     return {
         "emotion_primary": emotion_primary,
         "emotion_cause": emotion_cause,
@@ -303,6 +335,11 @@ def _state(
             "possessiveness": detail.get("possessiveness", 0),
             "emotional_tension": detail.get("emotional_tension", 0),
             "triggers": detail.get("triggers", []),
+            "summary": summary,
+            # 决策可见压缩强度；表达侧不得把数值念给用户。
+            "active_levels": {
+                key: value for key, value in levels.items() if value >= 15
+            },
         },
         "relationship_summary": relationship_summary,
         "attachment_state": {

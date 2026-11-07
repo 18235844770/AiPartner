@@ -2,7 +2,13 @@ import pytest
 from pydantic import ValidationError
 
 from app.modules.dialogue.domain.enums import SelfMotivationKind
-from app.modules.dialogue.domain.suggestion import FactCheckResult, SelfMotivation
+from app.modules.dialogue.domain.suggestion import (
+    EmotionalMotivation,
+    FactCheckResult,
+    ModelDecisionSuggestion,
+    RelationshipMotivation,
+    SelfMotivation,
+)
 from app.modules.dialogue.domain.turn_state import plan_turn_state
 from app.modules.dialogue.domain.enums import DialogueAction
 from app.modules.state.domain.enums import InteractionEnergy, InteractionMode, MotivationKind
@@ -25,6 +31,44 @@ def test_self_motivation_kind_defaults_to_none() -> None:
             "desire_to_express": "说一句",
         }
     ).kind == SelfMotivationKind.NONE
+
+
+def test_decision_suggestion_coerces_common_model_mistakes() -> None:
+    suggestion = ModelDecisionSuggestion.model_validate(
+        {
+            "should_send": True,
+            "primary_action": "respond",
+            "secondary_actions": [],
+            "motivation": {"primary": "回应用户问候", "summary": "先接住"},
+            "user_need": {"summary": "用户在打招呼"},
+            "self_motivation": {
+                "kind": "none",
+                "interest": None,
+                "viewpoint": None,
+                "desire_to_express": False,
+            },
+            "emotional_motivation": {"emotion": "warmth", "intensity": "low"},
+            "relationship_motivation": {
+                "kind": "maintain_connection",
+                "intensity": "medium",
+                "reason": "保持联系",
+            },
+            "topic": {"topic_id": "greeting", "transition": "continue"},
+            "fact_check": {"has_conflict": False, "conflict_summary": None, "should_correct": False},
+            "confidence": 0.8,
+            "reasoning_summary": "普通问候应当回应",
+        }
+    )
+    assert suggestion.self_motivation.desire_to_express == "没有"
+    assert suggestion.emotional_motivation is not None
+    assert suggestion.emotional_motivation.intensity == 0.3
+    assert suggestion.relationship_motivation is not None
+    assert suggestion.relationship_motivation.kind == SelfMotivationKind.SEEK_CONNECTION
+    assert suggestion.relationship_motivation.intensity == 0.5
+    assert RelationshipMotivation.model_validate(
+        {"kind": "reassurance", "intensity": 0.6, "reason": "确认在场"}
+    ).kind == SelfMotivationKind.SHOW_CARE
+    assert EmotionalMotivation.model_validate({"emotion": "calm", "intensity": "high"}).intensity == 0.8
 
 
 def test_fact_check_requires_summary_when_conflict_exists() -> None:

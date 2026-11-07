@@ -41,6 +41,9 @@ class SelfMotivationKind(StrEnum):
     SEEK_ATTENTION = "seek_attention"
     PLAYFUL_INTERACTION = "playful_interaction"
     EXPRESS_OPINION = "express_opinion"
+    ASSERT_STANCE = "assert_stance"
+    EXPRESS_GRIEVANCE = "express_grievance"
+    SEEK_ACKNOWLEDGMENT = "seek_acknowledgment"
     NONE = "none"
 
 

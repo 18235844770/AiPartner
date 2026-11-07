@@ -137,15 +137,31 @@ class ProactiveCheckService:
         )
         if attachment_blocked is not None:
             return {"checked": True, "sent": False, "reason": attachment_blocked}
+        # 主动回合必须在独立会话中执行：调用方（如 TaskExecutor）若包着长事务，
+        # 决策的 begin() 只会变成 savepoint，模型日志侧看不到未提交的 decision。
+        return await self._run_proactive_turn(user_id, companion_id, conversation.id)
+
+    async def _run_proactive_turn(
+        self,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> dict[str, object]:
         outcome = "quiet"
         sent = False
-        async for event in self._turns.iter_proactive_turn(session, user_id, companion_id, conversation.id):
-            if isinstance(event, TurnCompleted):
-                outcome = event.outcome
-                sent = event.outcome == "replied"
-            elif isinstance(event, TurnFailed):
-                outcome = "failed"
-                sent = False
+        async with self._session_factory() as turn_session:
+            async for event in self._turns.iter_proactive_turn(
+                turn_session,
+                user_id,
+                companion_id,
+                conversation_id,
+            ):
+                if isinstance(event, TurnCompleted):
+                    outcome = event.outcome
+                    sent = event.outcome == "replied"
+                elif isinstance(event, TurnFailed):
+                    outcome = "failed"
+                    sent = False
         logger.info("proactive check for companion %s outcome %s", companion_id, outcome)
         return {"checked": True, "sent": sent, "outcome": outcome}
 

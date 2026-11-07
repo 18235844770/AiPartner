@@ -2,7 +2,13 @@
 import { computed, toRef, watch } from "vue";
 
 import { useInspection, type DebugSection } from "../composables/useInspection";
-import { formatRecord, formatTimestamp, labelOf } from "../domain/presentation";
+import {
+  emotionLevelEntries,
+  formatPercent,
+  formatRecord,
+  formatTimestamp,
+  labelOf,
+} from "../domain/presentation";
 import type { ConversationScope } from "../services/conversations";
 
 const props = defineProps<{
@@ -187,13 +193,33 @@ function tokenText(input: number | null, output: number | null): string {
       <div class="grid">
         <article>
           <h3>情绪</h3>
-          <p class="value">{{ state.emotion.primary }}</p>
-          <p class="muted">强度 {{ state.emotion.intensity }} · {{ state.emotion.cause_summary }}</p>
+          <p class="value">{{ labelOf(state.emotion.primary) }}</p>
+          <p class="muted">强度 {{ formatPercent(state.emotion.intensity) }} · {{ state.emotion.cause_summary }}</p>
+          <p
+            v-if="emotionLevelEntries(state.emotion.levels).length > 0"
+            class="muted"
+          >
+            {{
+              emotionLevelEntries(state.emotion.levels)
+                .map((item) => `${item.label} ${formatPercent(item.value)}`)
+                .join(" · ")
+            }}
+          </p>
         </article>
         <article>
           <h3>内部关系</h3>
-          <p class="muted">亲近 {{ state.relationship.closeness }} · 信任 {{ state.relationship.trust }}</p>
-          <p class="muted">在意 {{ state.relationship.care }} · 张力 {{ state.relationship.current_tension }}</p>
+          <p class="muted">
+            依恋 {{ formatPercent(state.relationship.attachment_strength) }} · 依赖
+            {{ formatPercent(state.relationship.emotional_reliance) }}
+          </p>
+          <p class="muted">
+            安全感 {{ formatPercent(state.relationship.relationship_security) }} · 特殊性
+            {{ formatPercent(state.relationship.perceived_specialness) }}
+          </p>
+          <p class="muted">
+            亲近意愿 {{ formatPercent(state.relationship.closeness_desire) }} · 确认满足
+            {{ formatPercent(state.relationship.reassurance_satisfaction) }}
+          </p>
           <p>{{ state.relationship.summary }}</p>
         </article>
         <article>
