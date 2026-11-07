@@ -8,7 +8,14 @@ from app.modules.conversation.services.conversation_service import ConversationS
 from app.modules.identity.services.identity_service import IdentityService
 from app.modules.state.api.schemas import ApplyStateChangeRequest, StateEventResponse, StateResponse
 from app.modules.state.domain.enums import StateEventType, StateSourceType, event_type_for
-from app.modules.state.domain.snapshots import EmotionState, dump_snapshot, initial_snapshots
+from app.modules.state.domain.snapshots import (
+    EmotionState,
+    InteractionState,
+    MotivationState,
+    RelationshipState,
+    dump_snapshot,
+    initial_snapshots,
+)
 from app.modules.state.repositories.models import CompanionState, StateEvent
 from app.modules.state.repositories.state_repository import StateRepository
 from app.shared.exceptions.errors import AppError, ConflictError, NotFoundError
@@ -232,9 +239,9 @@ def to_state_response(state: CompanionState) -> StateResponse:
         version=state.version,
         updated_at=state.updated_at,
         emotion=EmotionState.model_validate(state.emotion),
-        relationship=state.relationship,
-        interaction=state.interaction,
-        motivation=state.motivation,
+        relationship=RelationshipState.model_validate(state.relationship),
+        interaction=InteractionState.model_validate(state.interaction),
+        motivation=MotivationState.model_validate(state.motivation),
     )
 
 

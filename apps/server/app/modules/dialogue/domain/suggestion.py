@@ -3,7 +3,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.dialogue.domain.decision import DecisionMotivation, DecisionTopic
-from app.modules.dialogue.domain.enums import DialogueAction, TopicTransition
+from app.modules.dialogue.domain.enums import DialogueAction, SelfMotivationKind, TopicTransition
 
 FALLBACK_USER_TEXT = "我暂时无法完成这次回复。"
 RECENT_MESSAGE_LIMIT = 10
@@ -30,9 +30,12 @@ class SelfMotivation(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    kind: SelfMotivationKind = SelfMotivationKind.NONE
     interest: str = Field(min_length=1, max_length=200)
     viewpoint: str = Field(min_length=1, max_length=200)
     desire_to_express: str = Field(min_length=1, max_length=200)
+    source: str | None = Field(default=None, max_length=64)
+    reason: str | None = Field(default=None, max_length=200)
 
     @field_validator("interest", "viewpoint", "desire_to_express", mode="before")
     @classmethod
@@ -49,6 +52,92 @@ class SelfMotivation(BaseModel):
             raise ValueError("不能为空")
         return stripped
 
+    @field_validator("kind", mode="before")
+    @classmethod
+    def missing_kind_is_none(cls, value: object) -> object:
+        if value is None or value == "":
+            return SelfMotivationKind.NONE
+        return value
+
+    @field_validator("source", "reason")
+    @classmethod
+    def strip_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
+class EmotionalMotivation(BaseModel):
+    """由当前情绪驱动的表达动机。可以为空，不要求每轮都有。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    emotion: str = Field(min_length=1, max_length=32)
+    intensity: float = Field(ge=0, le=1)
+
+    @field_validator("emotion")
+    @classmethod
+    def strip_emotion(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("不能为空")
+        return stripped
+
+
+class RelationshipMotivation(BaseModel):
+    """由依恋/关系需求驱动的动机。不等于控制用户。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: SelfMotivationKind
+    intensity: float = Field(ge=0, le=1)
+    reason: str | None = Field(default=None, max_length=200)
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def missing_kind_is_none(cls, value: object) -> object:
+        if value is None or value == "":
+            return SelfMotivationKind.NONE
+        return value
+
+    @field_validator("reason")
+    @classmethod
+    def strip_reason(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
+class FactCheckResult(BaseModel):
+    """决策前的事实核对。推断和低置信度观察不能当作冲突依据。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    has_conflict: bool = False
+    conflict_summary: str | None = Field(default=None, max_length=200)
+    should_correct: bool = False
+
+    @field_validator("conflict_summary")
+    @classmethod
+    def strip_summary(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    @model_validator(mode="after")
+    def conflict_requires_summary(self) -> "FactCheckResult":
+        if self.has_conflict:
+            if not self.conflict_summary:
+                raise ValueError("事实冲突必须写明冲突内容")
+            if not self.should_correct:
+                raise ValueError("已确认的事实冲突必须纠正，不能顺着接")
+        elif self.conflict_summary is not None or self.should_correct:
+            raise ValueError("没有事实冲突时不能标记纠正")
+        return self
+
 
 class ModelDecisionSuggestion(BaseModel):
     """模型只提供建议。是否发送由 Python 决定。"""
@@ -61,7 +150,10 @@ class ModelDecisionSuggestion(BaseModel):
     motivation: DecisionMotivation
     user_need: UserNeed
     self_motivation: SelfMotivation
+    emotional_motivation: EmotionalMotivation | None = None
+    relationship_motivation: RelationshipMotivation | None = None
     topic: DecisionTopic = Field(default_factory=DecisionTopic)
+    fact_check: FactCheckResult = Field(default_factory=FactCheckResult)
     confidence: Decimal = Field(ge=0, le=1)
     reasoning_summary: str = Field(min_length=1)
 
@@ -88,6 +180,9 @@ class ModelDecisionSuggestion(BaseModel):
             raise ValueError("Quiet 不能搭配其他行为")
         if self.primary_action in self.secondary_actions:
             raise ValueError("辅助行为不能与主要行为相同")
+        relationship_reason = ""
+        if self.relationship_motivation is not None:
+            relationship_reason = self.relationship_motivation.reason or ""
         blob = " ".join(
             [
                 self.motivation.primary,
@@ -97,6 +192,9 @@ class ModelDecisionSuggestion(BaseModel):
                 self.self_motivation.interest,
                 self.self_motivation.viewpoint,
                 self.self_motivation.desire_to_express,
+                self.self_motivation.reason or "",
+                relationship_reason,
+                self.fact_check.conflict_summary or "",
             ]
         )
         if assistant_self_reference(blob):
@@ -116,6 +214,7 @@ def considered_exchange(user_summary: str, desire: str) -> tuple[UserNeed, SelfM
     return (
         UserNeed(summary=user_summary),
         SelfMotivation(
+            kind=SelfMotivationKind.NONE,
             interest="没有必须接上的个人兴趣",
             viewpoint="这次没有完成自己的判断",
             desire_to_express=desire,

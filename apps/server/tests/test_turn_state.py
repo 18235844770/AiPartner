@@ -58,6 +58,7 @@ def test_reply_updates_emotion_interaction_and_motivation_without_changing_score
         motivation=_motivation(),
         user_spoke=True,
         now=now,
+        user_message="今天想和你聊聊近况",
     )
     assert plan is not None
     assert plan.emotion is not None
@@ -74,12 +75,15 @@ def test_reply_updates_emotion_interaction_and_motivation_without_changing_score
     assert plan.relationship is not None
     assert plan.relationship.closeness == 0.25
     assert plan.relationship.trust == 0.25
-    assert plan.relationship.summary == "已经开始交流，关系程度仍保持原来的判断"
+    assert plan.relationship.attachment == 0.25
+    assert plan.relationship.attachment_strength > 0
+    assert plan.relationship.summary.startswith("初识")
 
 
-def test_later_turn_keeps_relationship_scores_and_summary() -> None:
+def test_later_turn_keeps_legacy_scores_while_attachment_can_move() -> None:
     now = datetime(2026, 11, 6, 15, tzinfo=UTC)
-    relationship = _relationship("已经开始交流，关系程度仍保持原来的判断")
+    relationship = _relationship("熟悉阶段：开始形成共同交流期待")
+    relationship = relationship.model_copy(update={"attachment_strength": 0.2})
     first = plan_turn_state(
         action=DialogueAction.QUIET,
         secondary_actions=[],
@@ -93,10 +97,13 @@ def test_later_turn_keeps_relationship_scores_and_summary() -> None:
         motivation=_motivation(),
         user_spoke=True,
         now=now,
+        user_message="先不聊了",
     )
     assert first is not None
-    assert first.relationship is None
-    assert first.relationship is None or first.relationship.closeness == 0.25
+    # Quiet 且未发送时，没有 mutual_exchange；若无其他证据可不改依恋。
+    if first.relationship is not None:
+        assert first.relationship.closeness == 0.25
+        assert first.relationship.trust == 0.25
 
 
 def test_fallback_records_the_exchange_without_an_emotion() -> None:
@@ -180,6 +187,8 @@ def test_proactive_send_counts_an_unanswered_message() -> None:
     assert plan.interaction is not None
     assert plan.interaction.consecutive_unanswered_messages == 1
     assert plan.interaction.last_user_response_at is None
-    assert plan.relationship is None
+    assert plan.relationship is not None
+    assert plan.relationship.closeness == 0.25
+    assert plan.relationship.attachment_strength > 0
     assert plan.emotion is not None
     assert plan.emotion.primary == "engaged"

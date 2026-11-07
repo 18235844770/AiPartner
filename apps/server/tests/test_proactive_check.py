@@ -10,9 +10,13 @@ from app.main import create_app
 from app.modules.dialogue.domain.decision import DecisionMotivation, DecisionTopic
 from app.modules.dialogue.domain.enums import DialogueAction, TopicTransition
 from app.modules.dialogue.domain.proactive import (
+    HIGH_DESIRE_USER_SILENCE,
+    LOW_ENERGY_PROACTIVE_GAP,
     MIN_PROACTIVE_GAP,
     USER_TURN_GRACE,
+    ProactiveAttachmentCue,
     ProactiveMessage,
+    attachment_silence_block,
     frequency_block,
 )
 from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion, SelfMotivation, UserNeed
@@ -43,6 +47,28 @@ def test_frequency_blocks_a_burst_and_a_fresh_user_message() -> None:
     assert frequency_block([ProactiveMessage("user", now - timedelta(minutes=1))], now) == "awaiting_reply"
     assert frequency_block([ProactiveMessage("user", now - USER_TURN_GRACE)], now) is None
     assert frequency_block([], now) is None
+    assert frequency_block([], now, "quiet") == "energy_quiet"
+    assert frequency_block([ProactiveMessage("companion", now - MIN_PROACTIVE_GAP)], now, "low") == "too_recent"
+    assert frequency_block([ProactiveMessage("companion", now - LOW_ENERGY_PROACTIVE_GAP)], now, "low") is None
+    recent_user = [ProactiveMessage("user", now - timedelta(hours=4))]
+    assert (
+        attachment_silence_block(
+            recent_user,
+            now,
+            ProactiveAttachmentCue(closeness_desire=0.1, attachment_strength=0.05),
+        )
+        == "user_silence_too_short"
+    )
+    assert (
+        attachment_silence_block(
+            recent_user,
+            now,
+            ProactiveAttachmentCue(closeness_desire=0.75, attachment_strength=0.6),
+        )
+        is None
+    )
+    assert attachment_silence_block([], now, ProactiveAttachmentCue(closeness_desire=0.9)) is None
+    assert HIGH_DESIRE_USER_SILENCE < timedelta(hours=6)
 
 
 async def test_proactive_handler_rejects_a_bad_payload() -> None:

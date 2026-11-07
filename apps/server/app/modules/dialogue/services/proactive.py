@@ -10,14 +10,19 @@ from app.modules.conversation.domain.enums import ConversationStatus, MessageSta
 from app.modules.conversation.repositories.models import Conversation
 from app.modules.conversation.services.conversation_service import ConversationService
 from app.modules.dialogue.api.stream_schemas import TurnCompleted, TurnFailed
-from app.modules.dialogue.domain.proactive import ProactiveMessage, frequency_block
+from app.modules.dialogue.domain.proactive import (
+    ProactiveAttachmentCue,
+    ProactiveMessage,
+    attachment_silence_block,
+    frequency_block,
+)
 from app.modules.dialogue.services.turn_service import DialogueTurnService
 from app.modules.identity.services.identity_service import IdentityService
 from app.modules.infrastructure.api.schemas import CreateBackgroundTaskRequest
 from app.modules.infrastructure.domain.enums import BackgroundTaskType
 from app.modules.infrastructure.services.background_task_service import BackgroundTaskService
 from app.modules.state.domain.enums import InteractionMode
-from app.modules.state.domain.snapshots import InteractionState
+from app.modules.state.domain.snapshots import InteractionState, RelationshipState
 from app.modules.state.repositories.state_repository import StateRepository
 from app.modules.state.services.state_service import StateService
 from app.shared.database.session import get_session_factory
@@ -102,6 +107,7 @@ class ProactiveCheckService:
         if current is None:
             return {"checked": False, "sent": False, "reason": "missing"}
         interaction = InteractionState.model_validate(current.interaction)
+        relationship = RelationshipState.model_validate(current.relationship)
         if not interaction.proactive_allowed or interaction.mode.value not in _PROACTIVE_MODES:
             return {"checked": True, "sent": False, "reason": "proactive_not_allowed"}
         quiet_until = interaction.quiet_until
@@ -117,9 +123,20 @@ class ProactiveCheckService:
             for item in messages
             if item.status in _VISIBLE and item.sender_type in _SPEAKERS
         ]
-        blocked = frequency_block(visible, now)
+        blocked = frequency_block(visible, now, interaction.energy)
         if blocked is not None:
             return {"checked": True, "sent": False, "reason": blocked}
+        attachment_blocked = attachment_silence_block(
+            visible,
+            now,
+            ProactiveAttachmentCue(
+                closeness_desire=relationship.closeness_desire,
+                attachment_strength=relationship.attachment_strength,
+                separation_sensitivity=relationship.separation_sensitivity,
+            ),
+        )
+        if attachment_blocked is not None:
+            return {"checked": True, "sent": False, "reason": attachment_blocked}
         outcome = "quiet"
         sent = False
         async for event in self._turns.iter_proactive_turn(session, user_id, companion_id, conversation.id):

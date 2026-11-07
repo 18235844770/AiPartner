@@ -122,13 +122,24 @@ class PersonaService:
             core_traits={
                 "title": template.title,
                 "summary": template.summary,
-                "values": list(template.archive.values),
-                "thinking_habits": list(template.archive.thinking_habits),
+                "identity_summary": template.archive.identity.identity_summary,
+                "values": list(template.archive.identity.value_orientation),
+                "thinking_habits": list(template.archive.identity.thinking_habits),
+                "core_temperament": list(template.archive.identity.core_temperament),
             },
-            behavior_traits={"attention": list(template.archive.attention)},
+            behavior_traits={
+                "attention": list(template.archive.attention),
+                "natural_behavior": list(template.archive.identity.natural_behavior),
+                "interest_tendency": list(template.archive.identity.interest_tendency),
+                "attachment_disposition": template.archive.relationship.attachment_disposition.model_dump(mode="json"),
+            },
             communication_preferences={
                 "summary": template.expression,
-                "communication": template.archive.communication,
+                "communication": list(template.archive.identity.communication_tendency),
+                "emotional_expression": list(template.archive.identity.emotional_expression),
+                "emotional_boundaries": list(
+                    template.archive.relationship.relationship_preferences.emotional_boundaries
+                ),
             },
             archive=template.archive.dump(),
             change_reason=INITIAL_CHANGE_REASON,

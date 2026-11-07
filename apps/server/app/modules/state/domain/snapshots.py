@@ -2,10 +2,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.modules.state.domain.enums import InteractionMode, MotivationKind
+from app.modules.state.domain.enums import InteractionEnergy, InteractionMode, MotivationKind
 
 
 class EmotionState(BaseModel):
+    """情绪快照。嫉妒/占有欲等是内部状态，不是用户可见好感度。"""
+
     model_config = ConfigDict(extra="forbid")
 
     primary: str = Field(min_length=1, max_length=32)
@@ -13,6 +15,10 @@ class EmotionState(BaseModel):
     intensity: float = Field(ge=0, le=1)
     valence: float = Field(ge=0, le=1)
     arousal: float = Field(ge=0, le=1)
+    jealousy: float = Field(default=0, ge=0, le=1)
+    possessiveness: float = Field(default=0, ge=0, le=1)
+    emotional_tension: float = Field(default=0, ge=0, le=1)
+    triggers: list[str] = Field(default_factory=list)
     cause_summary: str = Field(min_length=1)
     updated_at: datetime
 
@@ -29,6 +35,11 @@ class EmotionState(BaseModel):
     def clean_secondary(cls, value: list[str]) -> list[str]:
         return _unique_texts(value)
 
+    @field_validator("triggers")
+    @classmethod
+    def clean_triggers(cls, value: list[str]) -> list[str]:
+        return _unique_texts(value, max_length=64)
+
 
 class EmotionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -38,6 +49,10 @@ class EmotionInput(BaseModel):
     intensity: float = Field(ge=0, le=1)
     valence: float = Field(ge=0, le=1)
     arousal: float = Field(ge=0, le=1)
+    jealousy: float = Field(default=0, ge=0, le=1)
+    possessiveness: float = Field(default=0, ge=0, le=1)
+    emotional_tension: float = Field(default=0, ge=0, le=1)
+    triggers: list[str] = Field(default_factory=list)
     cause_summary: str = Field(min_length=1)
 
     @field_validator("primary", "cause_summary")
@@ -53,9 +68,14 @@ class EmotionInput(BaseModel):
     def clean_secondary(cls, value: list[str]) -> list[str]:
         return _unique_texts(value)
 
+    @field_validator("triggers")
+    @classmethod
+    def clean_triggers(cls, value: list[str]) -> list[str]:
+        return _unique_texts(value, max_length=64)
+
 
 class RelationshipState(BaseModel):
-    """关系数值只供内部状态使用，不是用户可见的好感度。"""
+    """关系与依恋状态。数值只供内部使用，不是用户可见的好感度。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -64,6 +84,14 @@ class RelationshipState(BaseModel):
     attachment: float = Field(ge=0, le=1)
     care: float = Field(ge=0, le=1)
     current_tension: float = Field(ge=0, le=1)
+    attachment_strength: float = Field(default=0, ge=0, le=1)
+    emotional_reliance: float = Field(default=0, ge=0, le=1)
+    relationship_security: float = Field(default=0, ge=0, le=1)
+    perceived_specialness: float = Field(default=0, ge=0, le=1)
+    separation_sensitivity: float = Field(default=0, ge=0, le=1)
+    reassurance_satisfaction: float = Field(default=0, ge=0, le=1)
+    closeness_desire: float = Field(default=0, ge=0, le=1)
+    exclusivity_need: float = Field(default=0, ge=0, le=1)
     summary: str = Field(min_length=1)
 
     @field_validator("summary")
@@ -81,6 +109,7 @@ class InteractionState(BaseModel):
     mode: InteractionMode
     proactive_allowed: bool
     waiting_for_user: bool
+    energy: InteractionEnergy = InteractionEnergy.NORMAL
     last_user_response_at: datetime | None = None
     last_companion_message_at: datetime | None = None
     consecutive_unanswered_messages: int = Field(ge=0)
@@ -130,6 +159,10 @@ def initial_snapshots(now: datetime) -> dict[str, BaseModel]:
             intensity=0,
             valence=0,
             arousal=0,
+            jealousy=0,
+            possessiveness=0,
+            emotional_tension=0,
+            triggers=[],
             cause_summary="状态初始化",
             updated_at=now,
         ),
@@ -139,12 +172,21 @@ def initial_snapshots(now: datetime) -> dict[str, BaseModel]:
             attachment=0,
             care=0,
             current_tension=0,
+            attachment_strength=0,
+            emotional_reliance=0,
+            relationship_security=0,
+            perceived_specialness=0,
+            separation_sensitivity=0,
+            reassurance_satisfaction=0,
+            closeness_desire=0,
+            exclusivity_need=0,
             summary="状态初始化",
         ),
         "interaction": InteractionState(
             mode=InteractionMode.AVAILABLE,
             proactive_allowed=False,
             waiting_for_user=False,
+            energy=InteractionEnergy.NORMAL,
             consecutive_unanswered_messages=0,
         ),
         "motivation": MotivationState(
@@ -161,13 +203,13 @@ def dump_snapshot(model: BaseModel) -> dict[str, object]:
     return model.model_dump(mode="json")
 
 
-def _unique_texts(value: list[str]) -> list[str]:
+def _unique_texts(value: list[str], *, max_length: int = 32) -> list[str]:
     cleaned: list[str] = []
     for item in value:
         text = item.strip()
         if not text:
             raise ValueError("不能为空")
-        if len(text) > 32:
+        if len(text) > max_length:
             raise ValueError("过长")
         if text in cleaned:
             raise ValueError("不能重复")

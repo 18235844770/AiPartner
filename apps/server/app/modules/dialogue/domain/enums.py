@@ -27,6 +27,23 @@ class TopicTransition(StrEnum):
     NONE = "none"
 
 
+class SelfMotivationKind(StrEnum):
+    """交流动机类型，不是主行为。可以为 none，不要求每轮强行产生。"""
+
+    SHARE_INTEREST = "share_interest"
+    SHARE_THOUGHT = "share_thought"
+    SHARE_EXPERIENCE = "share_experience"
+    EXPRESS_EMOTION = "express_emotion"
+    SHOW_CARE = "show_care"
+    SEEK_CONNECTION = "seek_connection"
+    CONTINUE_TOPIC = "continue_topic"
+    RECALL_MEMORY = "recall_memory"
+    SEEK_ATTENTION = "seek_attention"
+    PLAYFUL_INTERACTION = "playful_interaction"
+    EXPRESS_OPINION = "express_opinion"
+    NONE = "none"
+
+
 class DecisionStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"

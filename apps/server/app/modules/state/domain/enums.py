@@ -8,6 +8,15 @@ class InteractionMode(StrEnum):
     PAUSED = "paused"
 
 
+class InteractionEnergy(StrEnum):
+    """交流活跃度。与 InteractionMode、关系状态分开；默认不得是 Quiet。"""
+
+    HIGH = "high"
+    NORMAL = "normal"
+    LOW = "low"
+    QUIET = "quiet"
+
+
 class MotivationKind(StrEnum):
     CONNECT = "connect"
     SHARE = "share"

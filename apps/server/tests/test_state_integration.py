@@ -54,6 +54,7 @@ async def test_state_snapshot_and_event_share_one_version(database_ready: None) 
         assert body["emotion"]["primary"] == "calm"
         assert body["relationship"]["closeness"] == 0
         assert body["interaction"]["proactive_allowed"] is False
+        assert body["interaction"]["energy"] == "normal"
         assert body["motivation"]["primary"] == "rest"
 
         again = await client.post(base, json={})

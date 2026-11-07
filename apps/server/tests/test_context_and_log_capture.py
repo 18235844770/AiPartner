@@ -65,15 +65,26 @@ def test_decision_context_keeps_identity_and_selects_related_interests() -> None
         ],
     )
     body = json.loads(messages[1].content)
-    assert "陪伴者" in body["identity"]["definition"]
+    assert "热情" in body["identity"]["definition"] or "好奇" in body["identity"]["definition"]
+    assert "陪伴者" in body["identity"]["background"]
+    assert body["identity"]["narrative"]
     assert body["core_persona"]["mbti_type"] == "ENFP"
+    assert body["core_persona"]["core_temperament"]
+    assert body["core_persona"]["misconceptions"]
     assert body["state"]["emotion_primary"] == "calm"
+    assert body["state"]["interaction_energy"] == "normal"
+    assert body["state"]["attachment_state"]["attachment_strength"] == 0
+    assert body["self_model"]["human_identity"] is False
+    assert body["relationship_profile"]["attachment_disposition"]
     assert any("故事" in item for item in body["interests"])
     assert body["versions"]["persona_version_id"] == "persona-1"
     assert any(item["origin"] == "system_generated" for item in body["initial_memories"])
     assert any("故事" in item["content"] for item in body["acquired_memories"])
     assert "Dialogue Policy" in messages[0].content
     assert "self_motivation" in messages[0].content
+    assert "fact_check" in messages[0].content
+    assert "share_interest" in messages[0].content
+    assert "attachment_disposition" in messages[0].content
 
 
 def test_realization_receives_identity_and_only_related_material() -> None:

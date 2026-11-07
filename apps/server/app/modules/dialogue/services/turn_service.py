@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.conversation.api.schemas import CreateMessageRequest
@@ -43,9 +44,10 @@ from app.modules.memory.services.context_service import MemoryContextService
 from app.modules.memory.services.retrieval import MemoryRetrievalService
 from app.modules.model_adapter.domain.messages import ChatMessage, TextCompletion
 from app.modules.model_adapter.services.model_adapter import ModelCallScope
+from app.modules.persona.domain.archive import AttachmentDisposition, PersonaArchive
 from app.modules.persona.services.persona_service import PersonaService
 from app.modules.state.api.schemas import ApplyStateChangeRequest
-from app.modules.state.domain.enums import InteractionMode, StateSourceType
+from app.modules.state.domain.enums import InteractionEnergy, InteractionMode, StateSourceType
 from app.modules.state.domain.snapshots import EmotionState, InteractionState, MotivationState, RelationshipState
 from app.modules.state.services.state_service import StateService
 from app.shared.exceptions.errors import AppError
@@ -89,6 +91,10 @@ class TurnContext:
     attention_topics: list[dict[str, object]] | None = None
     archive: dict[str, object] | None = None
     versions: dict[str, str] | None = None
+    interaction_energy: str = "normal"
+    current_local_time: str | None = None
+    emotion_detail: dict[str, object] | None = None
+    relationship_detail: dict[str, object] | None = None
 
     def decision_input(self, repair: bool) -> list[ChatMessage]:
         return decision_messages(
@@ -108,6 +114,10 @@ class TurnContext:
             attention_topics=self.attention_topics,
             archive=self.archive,
             versions=self.versions,
+            interaction_energy=self.interaction_energy,
+            current_local_time=self.current_local_time,
+            emotion_detail=self.emotion_detail,
+            relationship_detail=self.relationship_detail,
         )
 
     def realization_input(self, suggestion: ModelDecisionSuggestion) -> list[ChatMessage]:
@@ -127,6 +137,10 @@ class TurnContext:
             working_memory=self.working_memory,
             archive=self.archive,
             versions=self.versions,
+            interaction_energy=self.interaction_energy,
+            current_local_time=self.current_local_time,
+            emotion_detail=self.emotion_detail,
+            relationship_detail=self.relationship_detail,
         )
 
 
@@ -278,6 +292,7 @@ class DialogueTurnService:
                     should_send,
                     validation,
                     user_spoke=True,
+                    user_message=content,
                 )
                 settled = True
                 yield TurnCompleted(turn_id=turn_id, outcome="quiet", sequence=sequence.next())
@@ -373,6 +388,7 @@ class DialogueTurnService:
                 should_send,
                 validation,
                 user_spoke=True,
+                user_message=content,
             )
             settled = True
             yield MessageCompleted(
@@ -569,7 +585,11 @@ class DialogueTurnService:
             state = await self._states.get_current(session, user_id, companion_id)
             interaction = InteractionState.model_validate(state.interaction)
             yield TurnStarted(turn_id=turn_id, conversation_id=conversation_id, sequence=sequence.next())
-            if not interaction.proactive_allowed or interaction.mode not in _PROACTIVE_MODES:
+            if (
+                not interaction.proactive_allowed
+                or interaction.mode not in _PROACTIVE_MODES
+                or interaction.energy == InteractionEnergy.QUIET
+            ):
                 suggestion = blocked_proactive()
                 decision = await self._save(
                     session,
@@ -802,6 +822,24 @@ class DialogueTurnService:
                 "state_version": str(state.version),
                 **({} if working_version is None else {"working_memory_version": str(working_version)}),
             },
+            interaction_energy=interaction.energy.value,
+            current_local_time=datetime.now().astimezone().isoformat(timespec="minutes"),
+            emotion_detail={
+                "jealousy": emotion.jealousy,
+                "possessiveness": emotion.possessiveness,
+                "emotional_tension": emotion.emotional_tension,
+                "triggers": list(emotion.triggers),
+            },
+            relationship_detail={
+                "attachment_strength": relationship.attachment_strength,
+                "emotional_reliance": relationship.emotional_reliance,
+                "relationship_security": relationship.relationship_security,
+                "perceived_specialness": relationship.perceived_specialness,
+                "separation_sensitivity": relationship.separation_sensitivity,
+                "reassurance_satisfaction": relationship.reassurance_satisfaction,
+                "closeness_desire": relationship.closeness_desire,
+                "exclusivity_need": relationship.exclusivity_need,
+            },
         )
 
     async def _choose(
@@ -877,11 +915,16 @@ class DialogueTurnService:
         validation: dict[str, object],
         *,
         user_spoke: bool,
+        user_message: str | None = None,
     ) -> None:
         if validation.get("blocked"):
             return
         try:
             current = await self._states.get_current(session, user_id, companion_id)
+            disposition = await self._attachment_disposition(session, user_id, companion_id)
+            relationship_kind = None
+            if suggestion.relationship_motivation is not None:
+                relationship_kind = suggestion.relationship_motivation.kind
             plan = plan_turn_state(
                 action=action,
                 secondary_actions=list(suggestion.secondary_actions),
@@ -895,6 +938,10 @@ class DialogueTurnService:
                 motivation=MotivationState.model_validate(current.motivation),
                 user_spoke=user_spoke,
                 now=datetime.now(UTC),
+                disposition=disposition,
+                self_motivation_kind=suggestion.self_motivation.kind,
+                relationship_motivation_kind=relationship_kind,
+                user_message=user_message,
             )
             if plan is None:
                 return
@@ -919,6 +966,33 @@ class DialogueTurnService:
             logger.info("turn state was not written for decision %s: %s", decision_id, exc.message)
         except Exception:
             logger.exception("turn state update failed for decision %s", decision_id)
+
+    async def _attachment_disposition(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+    ) -> AttachmentDisposition | None:
+        try:
+            _profile, version = await self._personas.get_current(session, user_id, companion_id)
+        except AppError:
+            return None
+        archive = version.archive if isinstance(version.archive, dict) else None
+        if not archive:
+            return None
+        try:
+            return PersonaArchive.model_validate(archive).relationship.attachment_disposition
+        except ValidationError:
+            raw = archive.get("relationship")
+            if not isinstance(raw, dict):
+                return None
+            disposition = raw.get("attachment_disposition")
+            if not isinstance(disposition, dict):
+                return None
+            try:
+                return AttachmentDisposition.model_validate(disposition)
+            except ValidationError:
+                return None
 
     async def _link_calls(self, trace_id: uuid.UUID, decision_id: uuid.UUID) -> None:
         try:

@@ -10,6 +10,57 @@ from app.shared.database.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.shared.database.types import JSONB, UUID
 
 _MBTI_CHECK = "mbti_type IN (" + ", ".join(f"'{item.value}'" for item in MbtiType) + ")"
+_IDENTITY_LIST_KEYS = (
+    "core_temperament",
+    "cognitive_style",
+    "thinking_habits",
+    "value_orientation",
+    "emotional_structure",
+    "emotional_expression",
+    "social_tendency",
+    "intimate_relationship",
+    "communication_tendency",
+    "interest_tendency",
+    "natural_behavior",
+    "strengths",
+    "weaknesses",
+    "internal_conflicts",
+    "misconceptions",
+)
+_ARCHIVE_IDENTITY_LIST_CHECKS = " AND ".join(
+    f"jsonb_typeof(archive->'identity'->'{key}') = 'array'"
+    f" AND jsonb_array_length(archive->'identity'->'{key}') >= 1"
+    for key in _IDENTITY_LIST_KEYS
+)
+_ARCHIVE_CHECK = (
+    "jsonb_typeof(archive) = 'object'"
+    " AND archive ?& ARRAY['identity','relationship','self_model','background','interests','viewpoints','attention']"
+    " AND jsonb_typeof(archive->'identity') = 'object'"
+    " AND archive->'identity' ?& ARRAY["
+    "'identity_summary','core_temperament','cognitive_style','thinking_habits',"
+    "'value_orientation','emotional_structure','emotional_expression','social_tendency',"
+    "'intimate_relationship','communication_tendency','interest_tendency','natural_behavior',"
+    "'strengths','weaknesses','internal_conflicts','misconceptions','personality_narrative']"
+    " AND jsonb_typeof(archive->'identity'->'identity_summary') = 'string'"
+    " AND char_length(archive->'identity'->>'identity_summary') > 0"
+    " AND jsonb_typeof(archive->'identity'->'personality_narrative') = 'string'"
+    " AND char_length(archive->'identity'->>'personality_narrative') > 0"
+    f" AND {_ARCHIVE_IDENTITY_LIST_CHECKS}"
+    " AND jsonb_typeof(archive->'relationship') = 'object'"
+    " AND archive->'relationship' ?& ARRAY['attachment_disposition','relationship_preferences']"
+    " AND jsonb_typeof(archive->'relationship'->'attachment_disposition') = 'object'"
+    " AND jsonb_typeof(archive->'relationship'->'relationship_preferences') = 'object'"
+    " AND jsonb_typeof(archive->'self_model') = 'object'"
+    " AND archive->'self_model' ?& ARRAY["
+    "'entity_type','human_identity','self_awareness','physical_existence','biological_needs',"
+    "'experience_boundary','emotional_capability','relationship_capability',"
+    "'identity_consistency','disclosure_policy']"
+    " AND (archive->'self_model'->>'human_identity') = 'false'"
+    " AND jsonb_typeof(archive->'background') = 'string' AND char_length(archive->>'background') > 0"
+    " AND jsonb_typeof(archive->'interests') = 'array' AND jsonb_array_length(archive->'interests') >= 1"
+    " AND jsonb_typeof(archive->'viewpoints') = 'array' AND jsonb_array_length(archive->'viewpoints') >= 1"
+    " AND jsonb_typeof(archive->'attention') = 'array' AND jsonb_array_length(archive->'attention') >= 1"
+)
 
 
 class PersonaProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -57,19 +108,7 @@ class PersonaVersion(UUIDPrimaryKeyMixin, Base):
         CheckConstraint(_MBTI_CHECK, name="mbti_type"),
         CheckConstraint("version_number >= 1", name="version_number_positive"),
         CheckConstraint("char_length(change_reason) > 0", name="change_reason_nonempty"),
-        CheckConstraint(
-            "jsonb_typeof(archive) = 'object'"
-            " AND archive ?& ARRAY['identity','background','interests','viewpoints','values','thinking_habits','communication','attention']"
-            " AND jsonb_typeof(archive->'identity') = 'string' AND char_length(archive->>'identity') > 0"
-            " AND jsonb_typeof(archive->'background') = 'string' AND char_length(archive->>'background') > 0"
-            " AND jsonb_typeof(archive->'communication') = 'string' AND char_length(archive->>'communication') > 0"
-            " AND jsonb_typeof(archive->'interests') = 'array' AND jsonb_array_length(archive->'interests') >= 1"
-            " AND jsonb_typeof(archive->'viewpoints') = 'array' AND jsonb_array_length(archive->'viewpoints') >= 1"
-            " AND jsonb_typeof(archive->'values') = 'array' AND jsonb_array_length(archive->'values') >= 1"
-            " AND jsonb_typeof(archive->'thinking_habits') = 'array' AND jsonb_array_length(archive->'thinking_habits') >= 1"
-            " AND jsonb_typeof(archive->'attention') = 'array' AND jsonb_array_length(archive->'attention') >= 1",
-            name="ck_persona_versions_archive_sections",
-        ),
+        CheckConstraint(_ARCHIVE_CHECK, name="ck_persona_versions_archive_sections"),
     )
 
     persona_profile_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

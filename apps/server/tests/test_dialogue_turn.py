@@ -34,12 +34,18 @@ def test_decision_prompt_omits_relationship_scores_and_does_not_invent_memories(
         repair=True,
     )
     body = messages[1].content
-    assert "closeness" not in body
-    assert "trust" not in body
-    assert "attachment" not in body
-    assert '"acquired_memories": []' in body
+    parsed = json.loads(body)
+    # 不把旧的关系总分当作可见好感度塞进决策上下文。
+    assert "closeness" not in parsed["state"]
+    assert "trust" not in parsed["state"]
+    assert "attachment" not in parsed["state"]
+    assert "attachment_state" in parsed["state"]
+    assert parsed["acquired_memories"] == []
     assert "陪伴者" in body
+    assert "interaction_energy" in body
+    assert "current_local_time" in messages[0].content or "current_local_time" in body
     assert "Dialogue Policy" in messages[0].content
+    assert "fact_check" in messages[0].content
     assert "今天先这样" in body
     assert "上一次输出不符合结构" in messages[2].content
     assert "invalid output" not in messages[2].content
@@ -258,7 +264,9 @@ async def test_respond_keeps_the_decided_action_and_uses_the_realization(databas
         assert body["interaction"]["last_companion_message_at"] is not None
         assert body["interaction"]["proactive_allowed"] is False
         assert body["relationship"]["closeness"] == 0
-        assert body["relationship"]["summary"] == "已经开始交流，关系程度仍保持原来的判断"
+        assert body["relationship"]["attachment_strength"] >= 0
+        assert body["relationship"]["summary"]
+        assert "初识" in body["relationship"]["summary"] or "熟悉" in body["relationship"]["summary"] or "交流" in body["relationship"]["summary"]
         events_response = await client.get(f"{scope.state}/events")
         assert events_response.status_code == 200
         recorded = [item for item in events_response.json() if item["source_type"] == "dialogue_decision"]
@@ -266,8 +274,10 @@ async def test_respond_keeps_the_decided_action_and_uses_the_realization(databas
         assert recorded[0]["dialogue_decision_id"] == events[0][1]["turn_id"]
     assert [name for name, _messages in adapter.calls] == ["structured", "text"]
     sent = adapter.calls[0][1][1].content
-    assert "closeness" not in sent
-    assert '"acquired_memories": []' in sent
+    sent_body = json.loads(sent)
+    assert "closeness" not in sent_body["state"]
+    assert "trust" not in sent_body["state"]
+    assert sent_body["acquired_memories"] == []
     assert "陪伴者" in sent
     assert '"source": "current_message"' in sent
     assert "今天有点累" in sent

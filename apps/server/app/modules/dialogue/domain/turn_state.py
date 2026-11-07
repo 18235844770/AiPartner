@@ -1,10 +1,20 @@
-"""把已经执行的决策写成状态变化。关系数值不因一句话增减。"""
+"""把已经执行的决策写成状态变化。
+
+旧的 closeness/trust/attachment/care 总分不因普通一句话增减。
+依恋状态字段只在有可核对证据时渐进更新。
+"""
 
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.modules.dialogue.domain.enums import DialogueAction
-from app.modules.state.domain.enums import InteractionMode, MotivationKind
+from app.modules.dialogue.domain.attachment_progress import (
+    AttachmentProgress,
+    collect_attachment_evidence,
+    plan_attachment_progress,
+)
+from app.modules.dialogue.domain.enums import DialogueAction, SelfMotivationKind
+from app.modules.persona.domain.archive import AttachmentDisposition
+from app.modules.state.domain.enums import InteractionEnergy, InteractionMode, MotivationKind
 from app.modules.state.domain.snapshots import (
     EmotionInput,
     EmotionState,
@@ -13,7 +23,6 @@ from app.modules.state.domain.snapshots import (
     RelationshipState,
 )
 
-_INITIAL_RELATIONSHIP = "状态初始化"
 _EMOTION = {
     DialogueAction.RESPOND: ("attentive", 0.25, 0.5, 0.25, "这一轮在听用户说话"),
     DialogueAction.SHARE: ("engaged", 0.5, 0.5, 0.5, "这一轮有自己想说的内容"),
@@ -66,6 +75,10 @@ def plan_turn_state(
     motivation: MotivationState,
     user_spoke: bool,
     now: datetime,
+    disposition: AttachmentDisposition | None = None,
+    self_motivation_kind: SelfMotivationKind | None = None,
+    relationship_motivation_kind: SelfMotivationKind | None = None,
+    user_message: str | None = None,
 ) -> TurnStateUpdate | None:
     """被拦住，或模型失败且这一轮没有发生交流时，不写状态。"""
     if blocked or (fallback and not user_spoke and not should_send):
@@ -78,7 +91,23 @@ def plan_turn_state(
     )
     next_emotion = None if fallback else _emotion(action, emotion)
     next_motivation = None if fallback else _motivation(action, secondary_actions, confidence, motivation)
-    next_relationship = _relationship(relationship, user_spoke=user_spoke, should_send=should_send)
+    attachment = _attachment(
+        relationship,
+        emotion if next_emotion is None else _emotion_state_from_input(next_emotion, emotion),
+        disposition,
+        user_spoke=user_spoke,
+        should_send=should_send,
+        action=action,
+        self_motivation_kind=self_motivation_kind,
+        relationship_motivation_kind=relationship_motivation_kind,
+        user_message=user_message,
+        last_user_response_at=interaction.last_user_response_at,
+        now=now,
+        fallback=fallback,
+    )
+    next_relationship = attachment.relationship
+    if attachment.emotion is not None:
+        next_emotion = _merge_emotion(next_emotion, attachment.emotion, emotion)
     if (
         next_emotion is None
         and next_relationship is None
@@ -94,19 +123,55 @@ def plan_turn_state(
     if next_motivation is not None:
         pieces.append("动机")
     if next_relationship is not None:
-        pieces.append("关系里的初始化标记")
+        pieces.append("依恋状态" if attachment.reasons else "关系摘要")
     if fallback:
         reason = "决策没有完成，只记录这次交流发生过"
     else:
         reason = "这一轮决策已经执行，更新" + "、".join(pieces)
-        if next_relationship is not None:
-            reason += "。关系数值保持原样"
+        if attachment.reasons:
+            reason += "。依据：" + "；".join(attachment.reasons)
+        elif next_relationship is not None:
+            reason += "。关系总分保持原样，仅更新依恋相关状态"
     return TurnStateUpdate(
         reason=reason,
         emotion=next_emotion,
         relationship=next_relationship,
         interaction=next_interaction,
         motivation=next_motivation,
+    )
+
+
+def _attachment(
+    current: RelationshipState,
+    emotion: EmotionState,
+    disposition: AttachmentDisposition | None,
+    *,
+    user_spoke: bool,
+    should_send: bool,
+    action: DialogueAction,
+    self_motivation_kind: SelfMotivationKind | None,
+    relationship_motivation_kind: SelfMotivationKind | None,
+    user_message: str | None,
+    last_user_response_at: datetime | None,
+    now: datetime,
+    fallback: bool,
+) -> AttachmentProgress:
+    evidence = collect_attachment_evidence(
+        user_spoke=user_spoke,
+        should_send=should_send,
+        action=action,
+        self_motivation_kind=self_motivation_kind,
+        relationship_motivation_kind=relationship_motivation_kind,
+        user_message=user_message,
+        last_user_response_at=last_user_response_at,
+        now=now,
+    )
+    return plan_attachment_progress(
+        current,
+        emotion,
+        disposition,
+        evidence,
+        fallback=fallback,
     )
 
 
@@ -127,6 +192,8 @@ def _interaction(
         if current.mode == InteractionMode.QUIET:
             updated.mode = InteractionMode.AVAILABLE
             updated.quiet_until = None
+        if current.energy == InteractionEnergy.QUIET:
+            updated.energy = InteractionEnergy.NORMAL
     if should_send:
         updated.last_companion_message_at = now
         if not user_spoke:
@@ -145,6 +212,10 @@ def _emotion(action: DialogueAction, current: EmotionState) -> EmotionInput | No
         intensity=intensity,
         valence=valence,
         arousal=arousal,
+        jealousy=current.jealousy,
+        possessiveness=current.possessiveness,
+        emotional_tension=current.emotional_tension,
+        triggers=list(current.triggers),
         cause_summary=cause,
     )
     current_input = EmotionInput(
@@ -153,11 +224,53 @@ def _emotion(action: DialogueAction, current: EmotionState) -> EmotionInput | No
         intensity=current.intensity,
         valence=current.valence,
         arousal=current.arousal,
+        jealousy=current.jealousy,
+        possessiveness=current.possessiveness,
+        emotional_tension=current.emotional_tension,
+        triggers=list(current.triggers),
         cause_summary=current.cause_summary,
     )
     if proposed == current_input:
         return None
     return proposed
+
+
+def _merge_emotion(
+    base: EmotionInput | None,
+    attachment_emotion: EmotionInput,
+    current: EmotionState,
+) -> EmotionInput:
+    """保留回合主情绪，合并依恋证据带来的关系情绪分量。"""
+    if base is None:
+        return attachment_emotion
+    cause = base.cause_summary
+    if attachment_emotion.cause_summary and attachment_emotion.cause_summary not in cause:
+        cause = f"{base.cause_summary}；{attachment_emotion.cause_summary}"
+    return base.model_copy(
+        update={
+            "jealousy": attachment_emotion.jealousy,
+            "possessiveness": attachment_emotion.possessiveness,
+            "emotional_tension": attachment_emotion.emotional_tension,
+            "triggers": list(attachment_emotion.triggers),
+            "cause_summary": cause,
+        }
+    )
+
+
+def _emotion_state_from_input(value: EmotionInput, current: EmotionState) -> EmotionState:
+    return EmotionState(
+        primary=value.primary,
+        secondary=list(value.secondary),
+        intensity=value.intensity,
+        valence=value.valence,
+        arousal=value.arousal,
+        jealousy=value.jealousy,
+        possessiveness=value.possessiveness,
+        emotional_tension=value.emotional_tension,
+        triggers=list(value.triggers),
+        cause_summary=value.cause_summary,
+        updated_at=current.updated_at,
+    )
 
 
 def _motivation(
@@ -187,14 +300,3 @@ def _motivation(
     if proposed == current:
         return None
     return proposed
-
-
-def _relationship(
-    current: RelationshipState,
-    *,
-    user_spoke: bool,
-    should_send: bool,
-) -> RelationshipState | None:
-    if current.summary != _INITIAL_RELATIONSHIP or not (user_spoke or should_send):
-        return None
-    return current.model_copy(update={"summary": "已经开始交流，关系程度仍保持原来的判断"})

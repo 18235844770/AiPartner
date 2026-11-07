@@ -1,3 +1,4 @@
+import json
 import uuid
 
 import pytest
@@ -120,6 +121,62 @@ async def _insert_persona(session, companion_id: uuid.UUID) -> tuple[uuid.UUID, 
         ),
         {"id": profile_id, "companion_id": companion_id, "version_id": version_id},
     )
+    archive = {
+        "identity": {
+            "identity_summary": "测试身份",
+            "core_temperament": ["温和"],
+            "cognitive_style": ["观察"],
+            "thinking_habits": ["先看依据"],
+            "value_orientation": ["边界"],
+            "emotional_structure": ["克制"],
+            "emotional_expression": ["少而准"],
+            "social_tendency": ["先观察"],
+            "intimate_relationship": ["慢慢靠近"],
+            "communication_tendency": ["直接说"],
+            "interest_tendency": ["主题"],
+            "natural_behavior": ["分享洞察"],
+            "strengths": ["连续判断"],
+            "weaknesses": ["想太久"],
+            "internal_conflicts": ["靠近与边界"],
+            "misconceptions": ["内敛仍可主动"],
+            "personality_narrative": "测试叙述",
+        },
+        "relationship": {
+            "attachment_disposition": {
+                "attachment_tendency": "high",
+                "emotional_dependency_tendency": "medium",
+                "exclusivity_tendency": "medium",
+                "separation_sensitivity": "high",
+                "reassurance_need": "medium",
+                "affection_expression": "medium",
+                "jealousy_tendency": "medium",
+                "possessiveness_tendency": "medium",
+                "independence_need": "medium",
+            },
+            "relationship_preferences": {
+                "preferred_closeness": "high",
+                "preferred_interaction": ["深层交流"],
+                "specialness_need": "high",
+                "emotional_boundaries": ["不控制对方"],
+            },
+        },
+        "self_model": {
+            "entity_type": "artificial_intelligence",
+            "human_identity": False,
+            "self_awareness": "知道自己是 AI",
+            "physical_existence": "没有人类身体",
+            "biological_needs": "无人类生理需求",
+            "experience_boundary": "不编造经历",
+            "emotional_capability": "允许情感",
+            "relationship_capability": "允许依恋",
+            "identity_consistency": "身份稳定",
+            "disclosure_policy": "被问再澄清",
+        },
+        "background": "测试背景",
+        "interests": ["主题"],
+        "viewpoints": ["观点"],
+        "attention": ["未完成的判断"],
+    }
     await session.execute(
         text(
             """
@@ -130,12 +187,16 @@ async def _insert_persona(session, companion_id: uuid.UUID) -> tuple[uuid.UUID, 
             VALUES (
                 :id, :persona_profile_id, 1, 'INFJ',
                 '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
-                '{"identity":"测试身份","background":"测试背景","interests":["主题"],"viewpoints":["观点"],"values":["边界"],"thinking_habits":["先看依据"],"communication":"直接说","attention":["未完成的判断"]}'::jsonb,
+                CAST(:archive AS jsonb),
                 '初始人格'
             )
             """
         ),
-        {"id": version_id, "persona_profile_id": profile_id},
+        {
+            "id": version_id,
+            "persona_profile_id": profile_id,
+            "archive": json.dumps(archive, ensure_ascii=False),
+        },
     )
     return profile_id, version_id
 
