@@ -10,7 +10,12 @@ from app.modules.infrastructure.api.schemas import (
     ModelConfigResponse,
     RollbackModelConfigRequest,
 )
-from app.modules.infrastructure.domain.enums import CONFIG_TASK_TYPES, ModelConfigKey, ModelProvider, ModelTaskType
+from app.modules.infrastructure.domain.enums import (
+    CONFIG_TASK_TYPES,
+    LOCAL_MODEL_CONFIG_KEYS,
+    ModelConfigKey,
+    ModelProvider,
+)
 from app.modules.infrastructure.repositories.infrastructure_repository import ModelConfigRepository
 from app.modules.infrastructure.repositories.models import ModelConfig
 from app.shared.database.session import get_session_factory
@@ -83,21 +88,29 @@ class ModelConfigService:
 
     async def ensure_local_embedding(self, model_name: str) -> ModelConfig:
         """没有 Embedding 配置时补一条本地默认配置。已有配置保持不变，并先提交，供适配器读取。"""
-        try:
-            created = await self._insert_local_embedding(model_name)
-        except IntegrityError:
-            logger.info("local embedding config was created concurrently")
-            created = None
-        if created is not None:
-            return created
-        current = await self._read_embedding_config()
-        if current is None:
-            raise NotFoundError("模型配置不存在")
-        return current
+        return await self._ensure_local_config(ModelConfigKey.EMBEDDING, model_name)
+
+    async def ensure_local_audio(self, *, asr_model_name: str, tts_model_name: str) -> None:
+        """没有 ASR/TTS 配置时各补一条本地默认配置。已有配置保持不变。"""
+        await self._ensure_local_config(ModelConfigKey.ASR, asr_model_name)
+        await self._ensure_local_config(ModelConfigKey.TTS, tts_model_name)
 
     async def list_configs(self, session: AsyncSession) -> list[ModelConfig]:
         async with session.begin():
             return await self._configs.list_all(session)
+
+    async def _ensure_local_config(self, config_key: ModelConfigKey, model_name: str) -> ModelConfig:
+        try:
+            created = await self._insert_local_config(config_key, model_name)
+        except IntegrityError:
+            logger.info("local %s config was created concurrently", config_key.value)
+            created = None
+        if created is not None:
+            return created
+        current = await self._read_local_config(config_key)
+        if current is None:
+            raise NotFoundError("模型配置不存在")
+        return current
 
     async def _replace_default(self, session: AsyncSession, config: ModelConfig) -> None:
         if not config.is_default or not config.is_enabled:
@@ -109,34 +122,36 @@ class ModelConfigService:
         current.updated_at = config.updated_at
         await session.flush()
 
-    async def _insert_local_embedding(self, model_name: str) -> ModelConfig | None:
+    async def _insert_local_config(self, config_key: ModelConfigKey, model_name: str) -> ModelConfig | None:
+        task_type = CONFIG_TASK_TYPES[config_key].value
         async with self._session_factory() as session:
             async with session.begin():
-                current = await self._configs.get_default(session, ModelTaskType.EMBEDDING.value)
+                current = await self._configs.get_default(session, task_type)
                 if current is not None:
                     return current
-                existing = await self._configs.lock_latest(session, ModelConfigKey.EMBEDDING.value)
+                existing = await self._configs.lock_latest(session, config_key.value)
                 if existing is not None:
                     return existing
                 now = datetime.now(UTC)
                 data = CreateModelConfigRequest(
-                    config_key=ModelConfigKey.EMBEDDING,
+                    config_key=config_key,
                     model_name=model_name,
                     is_enabled=True,
                     is_default=True,
                 )
-                config = self._new_row(ModelConfigKey.EMBEDDING, data, version=1, now=now)
+                config = self._new_row(config_key, data, version=1, now=now)
                 await self._replace_default(session, config)
                 await self._configs.add(session, config)
                 return config
 
-    async def _read_embedding_config(self) -> ModelConfig | None:
+    async def _read_local_config(self, config_key: ModelConfigKey) -> ModelConfig | None:
+        task_type = CONFIG_TASK_TYPES[config_key].value
         async with self._session_factory() as session:
             async with session.begin():
-                current = await self._configs.get_default(session, ModelTaskType.EMBEDDING.value)
+                current = await self._configs.get_default(session, task_type)
                 if current is not None:
                     return current
-                return await self._configs.lock_latest(session, ModelConfigKey.EMBEDDING.value)
+                return await self._configs.lock_latest(session, config_key.value)
 
     def _new_row(
         self,
@@ -149,7 +164,7 @@ class ModelConfigService:
             config_key=config_key.value,
             provider=(
                 ModelProvider.LOCAL.value
-                if config_key == ModelConfigKey.EMBEDDING
+                if config_key in LOCAL_MODEL_CONFIG_KEYS
                 else ModelProvider.DEEPSEEK.value
             ),
             model_name=data.model_name,

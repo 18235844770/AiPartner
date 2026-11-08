@@ -13,7 +13,12 @@ import {
 import { errorText } from "../services/http";
 import { streamUserTurn, type TurnEvent } from "../services/turns";
 
-export function useChat(getScope: () => ConversationScope | null) {
+export type ChatHooks = {
+  onCompanionMessageCompleted?: (messageId: string) => void;
+  onTurnInterrupted?: () => void;
+};
+
+export function useChat(getScope: () => ConversationScope | null, hooks: ChatHooks = {}) {
   const conversations = ref<ConversationResponse[]>([]);
   const messages = ref<MessageResponse[]>([]);
   const selectedId = ref<string | null>(null);
@@ -139,6 +144,7 @@ export function useChat(getScope: () => ConversationScope | null) {
     turnAbort = controller;
     sending.value = true;
     error.value = "";
+    hooks.onTurnInterrupted?.();
     let outcome = "";
     messages.value = [
       ...messages.value,
@@ -189,6 +195,7 @@ export function useChat(getScope: () => ConversationScope | null) {
 
   function stop(): void {
     turnAbort?.abort();
+    hooks.onTurnInterrupted?.();
   }
 
   function applyTurnEvent(conversationId: string, event: TurnEvent, current: string): string {
@@ -214,6 +221,7 @@ export function useChat(getScope: () => ConversationScope | null) {
         messages.value = messages.value.map((item) =>
           item.id === messageId ? { ...item, status: "completed" } : item,
         );
+        hooks.onCompanionMessageCompleted?.(messageId);
       }
       return current;
     }

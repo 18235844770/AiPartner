@@ -11,3 +11,11 @@ dist-electron/
 *.log
 .DS_Store
 Thumbs.db
+apps/audio_worker/outputs/
+apps/audio_worker/models/
+apps/audio_worker/vendor/
+apps/audio_worker/.wheels/
+apps/audio_worker/.venv/
+apps/server/data/audio/
+.cache/
+/audio/

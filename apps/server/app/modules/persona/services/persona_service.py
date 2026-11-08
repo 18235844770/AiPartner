@@ -9,6 +9,7 @@ from app.modules.identity.services.identity_service import IdentityService
 from app.modules.persona.api.schemas import CreatePersonaVersionRequest, InitializePersonaRequest, PersonaResponse, PersonaVersionResponse
 from app.modules.persona.domain.enums import MbtiType
 from app.modules.persona.domain.templates import PersonaTemplate, load_persona_templates
+from app.modules.persona.domain.voice_expression import default_voice_expression
 from app.modules.persona.repositories.models import PersonaProfile, PersonaVersion
 from app.modules.persona.repositories.persona_repository import PersonaRepository
 from app.shared.exceptions.errors import ConflictError, NotFoundError
@@ -132,6 +133,7 @@ class PersonaService:
                 "natural_behavior": list(template.archive.identity.natural_behavior),
                 "interest_tendency": list(template.archive.identity.interest_tendency),
                 "attachment_disposition": template.archive.relationship.attachment_disposition.model_dump(mode="json"),
+                "voice_expression": default_voice_expression(template.mbti_type).model_dump(mode="json"),
             },
             communication_preferences={
                 "summary": template.expression,

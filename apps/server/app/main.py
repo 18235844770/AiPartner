@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import HealthResponse, build_health
 from app.shared.cors import DESKTOP_ORIGINS
+from app.modules.audio.api.router import router as audio_router
 from app.modules.conversation.api.router import router as conversation_router
 from app.modules.dialogue.api.router import router as dialogue_router
 from app.modules.dialogue.api.turn_router import router as turn_router
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(log_router, prefix="/api")
     app.include_router(task_router, prefix="/api")
     app.include_router(scope_router, prefix="/api")
+    app.include_router(audio_router, prefix="/api")
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:

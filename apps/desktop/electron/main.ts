@@ -1,10 +1,19 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, session } from "electron";
 import path from "path";
 
 import { PythonServiceManager } from "./services/python-service";
 
 const pythonService = new PythonServiceManager(8000);
 let mainWindow: BrowserWindow | null = null;
+
+function allowMediaPermissions(): void {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === "media");
+  });
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    return permission === "media" || permission === "mediaKeySystem";
+  });
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -29,6 +38,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  allowMediaPermissions();
   ipcMain.handle("get-service-status", () => pythonService.status());
   pythonService.start();
   createWindow();

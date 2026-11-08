@@ -346,6 +346,87 @@ button:disabled {
   gap: 16px;
 }
 
+.voice-input {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid #e7e5e4;
+  border-radius: 12px;
+  background: #fffdf8;
+}
+
+.voice-input.recording {
+  border-color: #b45309;
+  background: #fff7ed;
+}
+
+.voice-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.voice-mic {
+  min-width: 88px;
+  border: 1px solid #d6d3d1;
+  border-radius: 999px;
+  background: #fafaf9;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.voice-mic.recording {
+  border-color: #b45309;
+  background: #fed7aa;
+  color: #9a3412;
+}
+
+.voice-mic:disabled,
+.voice-mic.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.voice-status {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.voice-preview {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.voice-preview textarea {
+  width: 100%;
+  margin-top: 6px;
+  resize: vertical;
+}
+
+.voice-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.voice-toolbar {
+  margin: 8px 0 0;
+}
+
+.voice-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #57534e;
+}
+
+.voice-player {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
 .composer-bar .muted,
 .thread-header .muted {
   margin: 0;

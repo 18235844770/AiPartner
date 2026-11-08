@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 
+import { useAudio } from "../composables/useAudio";
 import { useChat } from "../composables/useChat";
+import { useVoicePlayback } from "../composables/useVoicePlayback";
+import VoiceInput from "./VoiceInput.vue";
+import VoicePlayer from "./VoicePlayer.vue";
 import { conversationStatusLabel, conversationTitle, formatTimestamp, messageStateLabel, senderLabel } from "../domain/presentation";
 
 const props = defineProps<{
@@ -11,11 +15,27 @@ const props = defineProps<{
   companionName: string;
 }>();
 
-const chat = useChat(() => ({
+const scopeOf = () => ({
   apiBaseUrl: props.apiBaseUrl,
   userId: props.userId,
   companionId: props.companionId,
-}));
+});
+
+const voice = useVoicePlayback(scopeOf);
+const chat = useChat(scopeOf, {
+  onCompanionMessageCompleted: (messageId) => {
+    void voice.speakMessage(messageId);
+  },
+  onTurnInterrupted: () => {
+    void voice.interrupt();
+  },
+});
+const audio = useAudio(scopeOf);
+
+async function startVoiceRecording(): Promise<void> {
+  await voice.interrupt();
+  await audio.startRecording();
+}
 
 const titleDraft = ref("");
 const messageDraft = ref("");
@@ -47,6 +67,15 @@ function onComposerKeydown(event: KeyboardEvent): void {
     event.preventDefault();
     void submitMessage();
   }
+}
+
+async function confirmVoice(): Promise<void> {
+  const text = audio.takePreviewText();
+  if (!text || chat.sending.value || !chat.selected.value) {
+    return;
+  }
+  messageDraft.value = "";
+  await chat.sendMessage(text);
 }
 </script>
 
@@ -129,6 +158,17 @@ function onComposerKeydown(event: KeyboardEvent): void {
             <template v-if="message.sequence_number < Number.MAX_SAFE_INTEGER"> · #{{ message.sequence_number }}</template>
           </p>
           <p v-if="message.content" class="bubble-content">{{ message.content }}</p>
+          <VoicePlayer
+            v-if="message.sender_type === 'companion' && message.status === 'completed' && message.content"
+            :message-id="message.id"
+            :active-message-id="voice.activeMessageId.value"
+            :player-state="voice.playerState.value"
+            :synthesizing="voice.synthesizingIds.value.has(message.id)"
+            @play="voice.speakMessage(message.id)"
+            @pause="voice.pause()"
+            @resume="voice.resume()"
+            @stop="voice.stop()"
+          />
         </article>
       </div>
 
@@ -137,11 +177,30 @@ function onComposerKeydown(event: KeyboardEvent): void {
           v-model="messageDraft"
           rows="3"
           placeholder="写下要发送的消息"
-          :disabled="!chat.selected.value || chat.sending.value"
+          :disabled="!chat.selected.value || chat.sending.value || audio.busy.value"
           @keydown="onComposerKeydown"
         ></textarea>
+        <div class="voice-toolbar">
+          <label class="voice-toggle">
+            <input v-model="voice.enabled.value" type="checkbox" />
+            自动朗读回复
+          </label>
+        </div>
+        <VoiceInput
+          :state="audio.state.value"
+          :preview-text="audio.previewText.value"
+          :emotion-hint="audio.emotionHint.value"
+          :error="audio.error.value"
+          :disabled="!chat.selected.value || chat.sending.value"
+          @start="startVoiceRecording()"
+          @stop="audio.stopAndRecognize(chat.selected.value?.id ?? null)"
+          @cancel="audio.cancel()"
+          @discard="audio.discardPreview()"
+          @confirm="confirmVoice()"
+          @update:preview-text="audio.previewText.value = $event"
+        />
         <div class="composer-bar">
-          <p class="muted">Enter 发送，Shift + Enter 换行。</p>
+          <p class="muted">Enter 发送，Shift + Enter 换行；也可语音输入。</p>
           <div class="composer-actions">
             <button v-if="chat.sending.value" class="secondary" type="button" @click="chat.stop()">停止</button>
             <button class="primary" type="submit" :disabled="!chat.selected.value || chat.sending.value || !messageDraft.trim()">
@@ -151,6 +210,7 @@ function onComposerKeydown(event: KeyboardEvent): void {
         </div>
       </form>
       <p v-if="chat.error.value" class="error">{{ chat.error.value }}</p>
+      <p v-if="voice.error.value" class="error">{{ voice.error.value }}</p>
     </div>
   </section>
 </template>

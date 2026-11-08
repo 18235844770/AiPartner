@@ -10,7 +10,12 @@ import {
   type CompanionResponse,
   type UserResponse,
 } from "../services/identity";
-import { clearWorkspace, readWorkspace, writeWorkspace } from "../services/workspace-storage";
+import {
+  clearWorkspace,
+  readEnvWorkspaceOverride,
+  readWorkspace,
+  writeWorkspace,
+} from "../services/workspace-storage";
 
 export type WorkspacePhase = "loading" | "setup" | "ready" | "unavailable";
 
@@ -78,6 +83,11 @@ export function useWorkspace() {
   }
 
   async function restore(apiBaseUrl: string): Promise<void> {
+    const envOverride = readEnvWorkspaceOverride();
+    if (envOverride) {
+      // 把 ENFP 艺等强制工作区写入本地，后续即使去掉 env 也能恢复
+      writeWorkspace(envOverride);
+    }
     const stored = readWorkspace();
     if (!stored) {
       user.value = null;

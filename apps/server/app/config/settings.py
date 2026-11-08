@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     deepseek_timeout_seconds: float = Field(default=60, gt=0)
     deepseek_max_retries: int = Field(default=1, ge=0)
     embedding_model_name: str = Field(default="BAAI/bge-m3", min_length=1, max_length=64)
+    audio_worker_url: str = Field(default="http://127.0.0.1:8100", min_length=1)
+    audio_worker_timeout_seconds: float = Field(default=120, gt=0)
+    asr_model_name: str = Field(default="FunAudioLLM/SenseVoiceSmall", min_length=1, max_length=128)
+    tts_model_name: str = Field(default="Fun-CosyVoice3-0.5B-2512", min_length=1, max_length=128)
+    audio_storage_dir: Path = Field(default=SERVER_ROOT / "data" / "audio")
     model_log_detail: str = ""
     model_log_sample_rate: float | None = Field(default=None, ge=0, le=1)
     model_log_retention_days: int = Field(default=14, ge=1)

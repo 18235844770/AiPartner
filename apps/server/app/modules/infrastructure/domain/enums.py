@@ -11,6 +11,8 @@ class ModelConfigKey(StrEnum):
     DECISION = "decision_model"
     MEMORY = "memory_model"
     EMBEDDING = "embedding_model"
+    ASR = "asr_model"
+    TTS = "tts_model"
 
 
 class ModelTaskType(StrEnum):
@@ -18,6 +20,8 @@ class ModelTaskType(StrEnum):
     DECISION = "decision"
     MEMORY = "memory"
     EMBEDDING = "embedding"
+    ASR = "asr"
+    TTS = "tts"
 
 
 class ModelCallStatus(StrEnum):
@@ -52,4 +56,14 @@ CONFIG_TASK_TYPES = {
     ModelConfigKey.DECISION: ModelTaskType.DECISION,
     ModelConfigKey.MEMORY: ModelTaskType.MEMORY,
     ModelConfigKey.EMBEDDING: ModelTaskType.EMBEDDING,
+    ModelConfigKey.ASR: ModelTaskType.ASR,
+    ModelConfigKey.TTS: ModelTaskType.TTS,
 }
+
+LOCAL_MODEL_CONFIG_KEYS = frozenset(
+    {
+        ModelConfigKey.EMBEDDING,
+        ModelConfigKey.ASR,
+        ModelConfigKey.TTS,
+    }
+)

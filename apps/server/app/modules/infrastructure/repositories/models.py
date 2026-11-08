@@ -34,6 +34,8 @@ _CONFIG_PAIRING = " OR ".join(
         (ModelConfigKey.DECISION, ModelTaskType.DECISION),
         (ModelConfigKey.MEMORY, ModelTaskType.MEMORY),
         (ModelConfigKey.EMBEDDING, ModelTaskType.EMBEDDING),
+        (ModelConfigKey.ASR, ModelTaskType.ASR),
+        (ModelConfigKey.TTS, ModelTaskType.TTS),
     )
 )
 

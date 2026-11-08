@@ -1,0 +1,48 @@
+[project]
+name = "ai-companion-audio-worker"
+version = "0.1.0"
+description = "Local ASR/TTS inference worker for AI Companion"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    # CosyVoice / onnxruntime 需 NumPy 1.x；勿升到 2.x
+    "numpy>=1.26,<2",
+    "pydantic-settings>=2.6",
+    "python-multipart>=0.0.9",
+    "uvicorn[standard]>=0.32",
+]
+
+[project.optional-dependencies]
+# 真实模型依赖体积大、易与主业务冲突，单独安装。
+# CUDA torch 请用脚本（PyPI 默认多为 CPU 轮）：
+#   powershell -File .\scripts\setup_real_models.ps1
+asr = [
+    "funasr>=1.1.0",
+    "modelscope>=1.20.0",
+]
+tts = [
+    "huggingface-hub>=0.26.0",
+    "HyperPyYAML>=1.2.2",
+    "librosa>=0.10.0",
+    "modelscope>=1.20.0",
+    "onnxruntime>=1.18.0",
+    "soundfile>=0.12.1",
+    "transformers>=4.40.0",
+    "wetext>=0.0.4",
+    "x-transformers>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+testpaths = ["tests"]

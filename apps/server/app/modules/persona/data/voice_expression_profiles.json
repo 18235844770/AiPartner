@@ -1,0 +1,50 @@
+{
+  "INFJ": {
+    "expressiveness": 0.55,
+    "speaking_pace": 0.95,
+    "intonation_variation": 0.45,
+    "emotional_expressiveness": 0.55,
+    "pause_preference": 0.65,
+    "directness": 0.4
+  },
+  "INFP": {
+    "expressiveness": 0.65,
+    "speaking_pace": 0.92,
+    "intonation_variation": 0.6,
+    "emotional_expressiveness": 0.75,
+    "pause_preference": 0.7,
+    "directness": 0.35
+  },
+  "ENFP": {
+    "expressiveness": 0.9,
+    "speaking_pace": 1.12,
+    "intonation_variation": 0.85,
+    "emotional_expressiveness": 0.9,
+    "pause_preference": 0.35,
+    "directness": 0.75
+  },
+  "ENFJ": {
+    "expressiveness": 0.8,
+    "speaking_pace": 1.05,
+    "intonation_variation": 0.7,
+    "emotional_expressiveness": 0.8,
+    "pause_preference": 0.45,
+    "directness": 0.7
+  },
+  "INTJ": {
+    "expressiveness": 0.4,
+    "speaking_pace": 0.98,
+    "intonation_variation": 0.35,
+    "emotional_expressiveness": 0.4,
+    "pause_preference": 0.55,
+    "directness": 0.8
+  },
+  "INTP": {
+    "expressiveness": 0.5,
+    "speaking_pace": 1.0,
+    "intonation_variation": 0.4,
+    "emotional_expressiveness": 0.45,
+    "pause_preference": 0.6,
+    "directness": 0.55
+  }
+}

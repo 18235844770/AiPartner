@@ -16,7 +16,25 @@ function isStoredWorkspace(value: unknown): value is StoredWorkspace {
   );
 }
 
+/** 开发环境可用 .env.local 强制切到指定用户/陪伴者（例如 ENFP 艺）。 */
+export function readEnvWorkspaceOverride(): StoredWorkspace | null {
+  const userId = import.meta.env.VITE_WORKSPACE_USER_ID;
+  if (typeof userId !== "string" || !userId.trim()) {
+    return null;
+  }
+  const companionId = import.meta.env.VITE_WORKSPACE_COMPANION_ID;
+  return {
+    userId: userId.trim(),
+    companionId:
+      typeof companionId === "string" && companionId.trim() ? companionId.trim() : null,
+  };
+}
+
 export function readWorkspace(): StoredWorkspace | null {
+  const override = readEnvWorkspaceOverride();
+  if (override) {
+    return override;
+  }
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
     return null;
