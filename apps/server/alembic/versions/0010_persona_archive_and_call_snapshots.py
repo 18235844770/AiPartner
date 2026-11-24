@@ -27,6 +27,41 @@ AND jsonb_typeof(archive->'attention') = 'array' AND jsonb_array_length(archive-
 """
 
 
+def _archive_for_v1_check(archive: dict) -> dict:
+    """当前模板已是 V2 对象档案。这一版约束仍要求顶层字符串和数组，先投影，下一版再写回完整档案。"""
+    identity = archive.get("identity")
+    if isinstance(identity, str) and identity.strip():
+        return archive
+    identity = identity if isinstance(identity, dict) else {}
+
+    def texts(value: object, fallback: list[str]) -> list[str]:
+        if isinstance(value, list) and all(isinstance(item, str) and item.strip() for item in value) and value:
+            return value
+        return fallback
+
+    summary = identity.get("identity_summary")
+    if not isinstance(summary, str) or not summary.strip():
+        summary = "长期陪伴者"
+    background = archive.get("background")
+    if not isinstance(background, str) or not background.strip():
+        background = "和这个人长期相处的陪伴者。"
+    communication = identity.get("communication_tendency")
+    if isinstance(communication, list):
+        communication = "；".join(item.strip() for item in communication if isinstance(item, str) and item.strip())
+    if not isinstance(communication, str) or not communication.strip():
+        communication = "把话说清楚"
+    return {
+        "identity": summary,
+        "background": background,
+        "interests": texts(archive.get("interests"), ["日常交流"]),
+        "viewpoints": texts(archive.get("viewpoints"), ["真诚"]),
+        "values": texts(identity.get("value_orientation"), ["真诚"]),
+        "thinking_habits": texts(identity.get("thinking_habits"), ["先听再说"]),
+        "communication": communication,
+        "attention": texts(archive.get("attention"), ["当前话题"]),
+    }
+
+
 def upgrade() -> None:
     op.add_column("persona_versions", sa.Column("archive", postgresql.JSONB(astext_type=sa.Text()), nullable=True))
     templates = json.loads(
@@ -44,7 +79,10 @@ def upgrade() -> None:
                 WHERE mbti_type = :mbti AND archive IS NULL
                 """
             ),
-            {"archive": json.dumps(item["archive"], ensure_ascii=False), "mbti": item["mbti_type"]},
+            {
+                "archive": json.dumps(_archive_for_v1_check(item["archive"]), ensure_ascii=False),
+                "mbti": item["mbti_type"],
+            },
         )
     op.alter_column("persona_versions", "archive", nullable=False)
     op.create_check_constraint("ck_persona_versions_archive_sections", "persona_versions", _ARCHIVE_CHECK)

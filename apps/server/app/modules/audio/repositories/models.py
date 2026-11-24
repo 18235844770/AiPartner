@@ -66,6 +66,25 @@ class CompanionVoiceProfile(UUIDPrimaryKeyMixin, Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class CompanionVoicePreset(Base):
+    """陪伴者当前选中的音色。没有记录时用目录默认音色；local 表示本地合成。"""
+
+    __tablename__ = "companion_voice_presets"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["companion_id"],
+            ["companions.id"],
+            name="fk_companion_voice_presets_companion_id_companions",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("char_length(preset_id) > 0", name="preset_id_nonempty"),
+    )
+
+    companion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    preset_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class AudioTask(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "audio_tasks"
     __table_args__ = (

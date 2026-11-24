@@ -53,6 +53,9 @@ class AudioWorkerClient:
         reference_audio_path: str | None = None,
         reference_text: str | None = None,
         sample_rate: int = 24000,
+        provider: str | None = None,
+        provider_model: str | None = None,
+        provider_voice_id: str | None = None,
     ) -> WorkerTtsResult:
         payload = {
             "text": text,
@@ -62,6 +65,9 @@ class AudioWorkerClient:
             "reference_audio_path": reference_audio_path,
             "reference_text": reference_text,
             "sample_rate": sample_rate,
+            "provider": provider,
+            "provider_model": provider_model,
+            "provider_voice_id": provider_voice_id,
         }
         body = await self._post_json("/v1/tts", payload)
         return WorkerTtsResult.model_validate(body)

@@ -41,6 +41,9 @@ class TtsRequest(BaseModel):
     volume: float = Field(default=1.0, gt=0.1, le=2.0)
     instruction: str | None = Field(default=None, max_length=500)
     sample_rate: int = Field(default=24000, ge=8000, le=48000)
+    provider: str | None = Field(default=None, max_length=32)
+    provider_model: str | None = Field(default=None, max_length=128)
+    provider_voice_id: str | None = Field(default=None, max_length=128)
 
 
 class TtsResult(BaseModel):

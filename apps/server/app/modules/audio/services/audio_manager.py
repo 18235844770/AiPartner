@@ -19,6 +19,7 @@ from app.config.settings import Settings, get_settings
 from app.modules.audio.adapters.worker_client import AudioWorkerClient
 from app.modules.audio.domain.enums import AudioTaskStatus, AudioTaskType
 from app.modules.audio.domain.expression import TTS_CONTRACT_VERSION, prepare_speak_text
+from app.modules.audio.domain.preset_voices import cache_matches, render_preset_instruction
 from app.modules.audio.domain.schemas import (
     AsrRecognizeResponse,
     AudioHealthResponse,
@@ -42,6 +43,7 @@ from app.modules.audio.repositories.audio_repository import (
 )
 from app.modules.audio.repositories.models import AudioAsset, AudioTask
 from app.modules.audio.services.audio_expression_service import AudioExpressionService
+from app.modules.audio.services.preset_voice_service import PresetVoiceService
 from app.modules.audio.services.voice_profile_service import VoiceProfileService
 from app.modules.conversation.services.conversation_service import ConversationService
 from app.modules.identity.services.identity_service import IdentityService
@@ -69,6 +71,7 @@ class AudioManager:
         assets: AudioAssetRepository | None = None,
         voices: VoiceProfileRepository | None = None,
         voice_service: VoiceProfileService | None = None,
+        presets: PresetVoiceService | None = None,
         conversations: ConversationService | None = None,
         personas: PersonaService | None = None,
         states: StateService | None = None,
@@ -92,6 +95,7 @@ class AudioManager:
             identity=self._identity,
             settings=self._settings,
         )
+        self._presets = presets or PresetVoiceService(identity=self._identity)
         self._conversations = conversations or ConversationService()
         self._personas = personas or PersonaService()
         self._states = states or StateService()
@@ -209,11 +213,15 @@ class AudioManager:
                 if chosen is None or not chosen.enabled:
                     raise NotFoundError("音色不存在")
                 profile = chosen
+        preset = await self._presets.selected_preset(session, user_id, companion_id)
+        preset_key = preset.cache_key if preset is not None else None
 
         async with session.begin():
             await self._identity.get_owned_companion(session, user_id, companion_id)
             existing = await self._tasks.get_completed_tts_for_message(session, companion_id, message_id)
-            if existing is not None and _tts_cache_reusable(existing.expression_json):
+            if existing is not None and _tts_cache_reusable(existing.expression_json) and cache_matches(
+                existing.model_name, preset_key
+            ):
                 asset = await self._assets.get_by_task(session, existing.id, companion_id)
                 if asset is not None:
                     return TtsSynthesizeResponse(
@@ -267,13 +275,19 @@ class AudioManager:
             elif ref_path and "reference_stub" in Path(ref_path).name.lower():
                 ref_path = None
                 ref_text = None
+            instruction = expression.tts_instruction
+            if preset is not None:
+                instruction = render_preset_instruction(preset, expression.primary_emotion, instruction)
             result = await self._worker.synthesize(
                 text=text,
                 speed=round(profile.default_speed * expression.speed, 3),
                 volume=expression.volume,
-                instruction=expression.tts_instruction,
-                reference_audio_path=ref_path,
-                reference_text=ref_text,
+                instruction=instruction,
+                reference_audio_path=None if preset is not None else ref_path,
+                reference_text=None if preset is not None else ref_text,
+                provider=None if preset is None else preset.provider,
+                provider_model=None if preset is None else preset.model,
+                provider_voice_id=None if preset is None else preset.voice_id,
             )
         except ModelAdapterError as exc:
             await self._fail_task(session, task.id, companion_id, exc)

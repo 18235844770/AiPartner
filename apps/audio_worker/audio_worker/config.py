@@ -30,6 +30,10 @@ class WorkerSettings(BaseSettings):
     tts_default_prompt_wav: Path | None = None
     tts_fp16: bool = True
     max_queue_size: int = Field(default=8, ge=1)
+    fish_api_key: str = ""
+    volcengine_api_key: str = ""
+    dashscope_api_key: str = ""
+    dashscope_workspace_id: str = ""
 
 
 @lru_cache

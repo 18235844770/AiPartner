@@ -72,6 +72,30 @@ class TtsSynthesizeResponse(BaseModel):
     expression: AudioExpression | None = None
 
 
+class VoicePresetResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    provider: str
+    provider_label: str
+    model: str
+    language: str
+
+
+class VoicePresetSelectionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    preset_id: str | None = None
+    preset: VoicePresetResponse | None = None
+
+
+class VoicePresetSelectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    preset_id: str | None = Field(default=None, max_length=64)
+
+
 class VoiceProfileResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

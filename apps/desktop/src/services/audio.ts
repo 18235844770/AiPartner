@@ -1,5 +1,5 @@
 import type { ConversationScope } from "./conversations";
-import { ApiError, errorFromResponse } from "./http";
+import { ApiError, errorFromResponse, requestJson } from "./http";
 
 export type AudioHealthResponse = {
   status: string;
@@ -22,6 +22,20 @@ export type AsrRecognizeResponse = {
   emotion: string | null;
   status: string;
   duration_ms: number;
+};
+
+export type VoicePreset = {
+  id: string;
+  name: string;
+  provider: string;
+  provider_label: string;
+  model: string;
+  language: string;
+};
+
+export type VoicePresetSelection = {
+  preset_id: string | null;
+  preset: VoicePreset | null;
 };
 
 export type TtsSynthesizeResponse = {
@@ -84,6 +98,26 @@ export async function recognizeSpeech(
     throw await errorFromResponse(response);
   }
   return (await response.json()) as AsrRecognizeResponse;
+}
+
+export function fetchVoicePresets(apiBaseUrl: string): Promise<VoicePreset[]> {
+  return requestJson<VoicePreset[]>(`${apiBaseUrl}/api/audio/voice-presets`);
+}
+
+export function fetchVoicePreset(scope: ConversationScope): Promise<VoicePresetSelection> {
+  return requestJson<VoicePresetSelection>(
+    `${scope.apiBaseUrl}/api/audio/users/${scope.userId}/companions/${scope.companionId}/voice-preset`,
+  );
+}
+
+export function saveVoicePreset(scope: ConversationScope, presetId: string | null): Promise<VoicePresetSelection> {
+  return requestJson<VoicePresetSelection>(
+    `${scope.apiBaseUrl}/api/audio/users/${scope.userId}/companions/${scope.companionId}/voice-preset`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ preset_id: presetId }),
+    },
+  );
 }
 
 export async function synthesizeSpeech(

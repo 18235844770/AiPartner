@@ -1,0 +1,52 @@
+{
+  "options": [
+    {
+      "id": "longwan_v2",
+      "name": "龙婉 v2",
+      "provider": "dashscope",
+      "model": "cosyvoice-v2",
+      "voice": "longwan_v2",
+      "format": "wav",
+      "sample_rate": 24000,
+      "volume": 50,
+      "pitch": 1.0,
+      "seed": 0,
+      "language_hints": ["zh"],
+      "send_rate": true,
+      "rates": [0.9, 0.95, 1.05],
+      "instruct": null,
+      "output_dir": "audio/longwan-v2-rate-matrix",
+      "notes": "不支持 Instruct。语速是唯一表达变量，试听范围 0.90–1.05。"
+    },
+    {
+      "id": "longanhuan_chat",
+      "name": "龙安欢 · 闲聊实景",
+      "provider": "dashscope",
+      "model": "cosyvoice-v3-plus",
+      "voice": "longanhuan",
+      "format": "wav",
+      "sample_rate": 24000,
+      "volume": 50,
+      "pitch": 1.0,
+      "seed": 0,
+      "language_hints": ["zh"],
+      "send_rate": false,
+      "rates": null,
+      "instruct": {
+        "scene": "闲聊对话",
+        "template": "你正在进行{scene}，你说话的情感是{api_emotion}。",
+        "emotion_map": {
+          "neutral": "neutral",
+          "joy": "happy",
+          "affection": "neutral",
+          "sadness": "sad",
+          "jealousy": "neutral",
+          "anger": "angry"
+        },
+        "unmapped_emotions": ["affection", "jealousy"]
+      },
+      "output_dir": "audio/longanhuan-chat",
+      "notes": "不传语速。官方情感没有亲密和嫉妒，这两项只保留闲聊场景，情感用 neutral。"
+    }
+  ]
+}

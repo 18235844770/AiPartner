@@ -1,0 +1,70 @@
+{
+  "default_id": "longanhuan-3",
+  "voices": [
+    {
+      "id": "longanhuan-3",
+      "name": "龙安欢 3.0",
+      "provider": "dashscope",
+      "provider_label": "龙安欢",
+      "model": "cosyvoice-v3-plus",
+      "voice_id": "longanhuan",
+      "language": "zh",
+      "instruct": {
+        "scene": "闲聊对话",
+        "template": "你正在进行{scene}，你说话的情感是{api_emotion}。",
+        "emotion_map": {
+          "joy": "happy",
+          "excitement": "happy",
+          "sadness": "sad",
+          "hurt": "sad",
+          "anger": "angry"
+        }
+      }
+    },
+    {
+      "id": "fish-yutong",
+      "name": "语彤",
+      "provider": "fish",
+      "provider_label": "Fish Audio",
+      "model": "s2.1-pro",
+      "voice_id": "74c6aba5cbf94a15bbdc547ffce5cb38",
+      "language": "zh"
+    },
+    {
+      "id": "fish-xue-zhiqian",
+      "name": "薛之谦",
+      "provider": "fish",
+      "provider_label": "Fish Audio",
+      "model": "s2.1-pro",
+      "voice_id": "61b33c9a45324f69a22dbb5f91a526d0",
+      "language": "zh"
+    },
+    {
+      "id": "fish-deng-ziqi",
+      "name": "邓紫棋",
+      "provider": "fish",
+      "provider_label": "Fish Audio",
+      "model": "s2.1-pro",
+      "voice_id": "885171cb0820413caf62d515c286ce1d",
+      "language": "zh"
+    },
+    {
+      "id": "fish-wang-sulong",
+      "name": "汪苏泷",
+      "provider": "fish",
+      "provider_label": "Fish Audio",
+      "model": "s2.1-pro",
+      "voice_id": "092d735394c64eefba2f966432c7526e",
+      "language": "zh"
+    },
+    {
+      "id": "volc-xiaohe-3",
+      "name": "小何 3.0",
+      "provider": "volcengine",
+      "provider_label": "豆包",
+      "model": "doubao-seed-tts-3.0",
+      "voice_id": "multi_female_xiaohe_taiwan_v3_uranus_bigtts",
+      "language": "zh"
+    }
+  ]
+}

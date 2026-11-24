@@ -4,6 +4,8 @@ import { nextTick, ref, watch } from "vue";
 import { useAudio } from "../composables/useAudio";
 import { useChat } from "../composables/useChat";
 import { useVoicePlayback } from "../composables/useVoicePlayback";
+import { fetchVoicePreset, fetchVoicePresets, saveVoicePreset, type VoicePreset } from "../services/audio";
+import { errorText } from "../services/http";
 import VoiceInput from "./VoiceInput.vue";
 import VoicePlayer from "./VoicePlayer.vue";
 import { conversationStatusLabel, conversationTitle, formatTimestamp, messageStateLabel, senderLabel } from "../domain/presentation";
@@ -22,6 +24,46 @@ const scopeOf = () => ({
 });
 
 const voice = useVoicePlayback(scopeOf);
+const presets = ref<VoicePreset[]>([]);
+const presetId = ref("");
+const presetBusy = ref(false);
+
+async function loadVoicePresets(): Promise<void> {
+  if (!props.apiBaseUrl || !props.userId || !props.companionId) {
+    return;
+  }
+  try {
+    const scope = scopeOf();
+    const [catalog, selection] = await Promise.all([fetchVoicePresets(scope.apiBaseUrl), fetchVoicePreset(scope)]);
+    presets.value = catalog;
+    presetId.value = selection.preset_id ?? "";
+  } catch (caught) {
+    voice.error.value = errorText(caught);
+  }
+}
+
+async function onPresetChange(event: Event): Promise<void> {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) {
+    return;
+  }
+  const next = target.value;
+  presetBusy.value = true;
+  try {
+    const saved = await saveVoicePreset(scopeOf(), next || null);
+    presetId.value = saved.preset_id ?? "";
+    voice.error.value = "";
+  } catch (caught) {
+    voice.error.value = errorText(caught);
+    target.value = presetId.value;
+  } finally {
+    presetBusy.value = false;
+  }
+}
+
+watch(() => [props.apiBaseUrl, props.userId, props.companionId] as const, () => {
+  void loadVoicePresets();
+}, { immediate: true });
 const chat = useChat(scopeOf, {
   onCompanionMessageCompleted: (messageId) => {
     void voice.speakMessage(messageId);
@@ -181,6 +223,15 @@ async function confirmVoice(): Promise<void> {
           @keydown="onComposerKeydown"
         ></textarea>
         <div class="voice-toolbar">
+          <label class="voice-toggle">
+            音色
+            <select :value="presetId" :disabled="presetBusy" @change="onPresetChange">
+              <option value="">本地音色</option>
+              <option v-for="item in presets" :key="item.id" :value="item.id">
+                {{ item.provider_label }} · {{ item.name }}
+              </option>
+            </select>
+          </label>
           <label class="voice-toggle">
             <input v-model="voice.enabled.value" type="checkbox" />
             自动朗读回复

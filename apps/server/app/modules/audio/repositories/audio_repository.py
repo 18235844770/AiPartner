@@ -1,10 +1,15 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.audio.repositories.models import AudioAsset, AudioTask, CompanionVoiceProfile
+from app.modules.audio.repositories.models import (
+    AudioAsset,
+    AudioTask,
+    CompanionVoicePreset,
+    CompanionVoiceProfile,
+)
 
 
 class VoiceProfileRepository:
@@ -50,6 +55,27 @@ class VoiceProfileRepository:
 
     async def add(self, session: AsyncSession, profile: CompanionVoiceProfile) -> None:
         session.add(profile)
+        await session.flush()
+
+
+class VoicePresetRepository:
+    async def get(self, session: AsyncSession, companion_id: uuid.UUID) -> CompanionVoicePreset | None:
+        result = await session.execute(
+            select(CompanionVoicePreset).where(CompanionVoicePreset.companion_id == companion_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def upsert(self, session: AsyncSession, row: CompanionVoicePreset) -> None:
+        existing = await self.get(session, row.companion_id)
+        if existing is None:
+            session.add(row)
+        else:
+            existing.preset_id = row.preset_id
+            existing.updated_at = row.updated_at
+        await session.flush()
+
+    async def delete(self, session: AsyncSession, companion_id: uuid.UUID) -> None:
+        await session.execute(delete(CompanionVoicePreset).where(CompanionVoicePreset.companion_id == companion_id))
         await session.flush()
 
 

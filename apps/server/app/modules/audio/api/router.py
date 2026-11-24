@@ -12,16 +12,21 @@ from app.modules.audio.domain.schemas import (
     AudioHealthResponse,
     AudioTaskResponse,
     TtsSynthesizeResponse,
+    VoicePresetResponse,
+    VoicePresetSelectionRequest,
+    VoicePresetSelectionResponse,
     VoiceProfileResponse,
 )
 from app.modules.audio.domain.stream_schemas import encode_audio_sse
 from app.modules.audio.services.audio_manager import AudioManager
+from app.modules.audio.services.preset_voice_service import PresetVoiceService
 from app.modules.audio.services.voice_profile_service import VoiceProfileService, to_voice_response
 from app.shared.database.session import get_session
 
 router = APIRouter(prefix="/audio", tags=["audio"])
 audio_manager = AudioManager()
 voice_service = VoiceProfileService()
+preset_service = PresetVoiceService()
 
 
 class TtsBody(BaseModel):
@@ -108,6 +113,36 @@ async def synthesize_speech_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/voice-presets", response_model=list[VoicePresetResponse])
+async def list_voice_presets() -> list[VoicePresetResponse]:
+    return preset_service.list_catalog()
+
+
+@router.get(
+    "/users/{user_id}/companions/{companion_id}/voice-preset",
+    response_model=VoicePresetSelectionResponse,
+)
+async def get_voice_preset(
+    user_id: uuid.UUID,
+    companion_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+) -> VoicePresetSelectionResponse:
+    return await preset_service.get_selection(session, user_id, companion_id)
+
+
+@router.put(
+    "/users/{user_id}/companions/{companion_id}/voice-preset",
+    response_model=VoicePresetSelectionResponse,
+)
+async def set_voice_preset(
+    user_id: uuid.UUID,
+    companion_id: uuid.UUID,
+    body: VoicePresetSelectionRequest,
+    session: AsyncSession = Depends(get_session),
+) -> VoicePresetSelectionResponse:
+    return await preset_service.set_selection(session, user_id, companion_id, body.preset_id)
 
 
 @router.get(

@@ -6,6 +6,7 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
+from audio_worker.backends.cloud_preset import synthesize_cloud
 from audio_worker.config import get_settings
 from audio_worker.factory import build_asr_backend, build_tts_backend
 from audio_worker.gpu import read_gpu_status
@@ -78,13 +79,8 @@ def create_app() -> FastAPI:
 
     @app.post("/v1/tts", response_model=TtsResult)
     async def tts_synthesize(body: TtsRequest) -> TtsResult:
-        queue: InferenceQueue = app.state.queue
-
-        async def _work() -> TtsResult:
-            return await app.state.tts.synthesize(body)
-
         try:
-            return await queue.run(_work)
+            return await _run_tts(app, body)
         except RuntimeError as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         except Exception as exc:
@@ -98,13 +94,8 @@ def create_app() -> FastAPI:
 
         from audio_worker.stream_chunks import iter_wav_ndjson
 
-        queue: InferenceQueue = app.state.queue
-
-        async def _work() -> TtsResult:
-            return await app.state.tts.synthesize(body)
-
         try:
-            result = await queue.run(_work)
+            result = await _run_tts(app, body)
         except RuntimeError as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         except Exception as exc:
@@ -118,6 +109,17 @@ def create_app() -> FastAPI:
         return StreamingResponse(frames(), media_type="application/x-ndjson")
 
     return app
+
+
+def _run_tts(app: FastAPI, body: TtsRequest):
+    queue: InferenceQueue = app.state.queue
+
+    async def _work() -> TtsResult:
+        if body.provider:
+            return await synthesize_cloud(app.state.settings, body)
+        return await app.state.tts.synthesize(body)
+
+    return queue.run(_work)
 
 
 app = create_app()
