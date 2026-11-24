@@ -86,6 +86,17 @@ def test_decision_cue_never_enters_tts_instruction() -> None:
     assert not any("\u4e00" <= ch <= "\u9fff" for ch in result.tts_instruction)
 
 
+def test_prepare_speak_text_drops_emoji_and_kaomoji() -> None:
+    raw = "到家啦(´・ω・`)😊\n今天真累 QAQ"
+    cleaned = prepare_speak_text(raw)
+    assert cleaned == "到家啦，今天真累"
+    assert "😊" not in cleaned
+    assert "QAQ" not in cleaned
+    kept = prepare_speak_text("有益的一点（明天再说）。")
+    assert "有益" in kept
+    assert "明天再说" in kept
+
+
 def test_prepare_speak_text_strips_decision_lines() -> None:
     raw = "你好。\n意图：想安慰用户\n决策：respond\n我在这儿。"
     cleaned = prepare_speak_text(raw)

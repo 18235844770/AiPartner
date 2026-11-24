@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app.modules.dialogue.domain.enums import DialogueAction
+from app.modules.dialogue.domain.enums import DialogueAction, TopicTransition
+from app.modules.dialogue.domain.speech_turn import is_bare_acknowledgement, is_social_signal, is_user_closing
 from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion
 
 # 同会话连续 Quiet 达到该次数后，下一轮用户消息禁止再 Quiet（除非用户明确要求沉默）。
@@ -101,12 +102,14 @@ def user_requests_silence(text: str) -> bool:
 
 
 def requires_response(text: str) -> bool:
-    """用户消息含问句、请求、情绪/关系表达、问候时，必须回应。"""
+    """用户消息含问句、请求、情绪/关系表达、问候或短附和时，必须回应。"""
     stripped = text.strip()
     if not stripped:
         return False
     if user_requests_silence(stripped):
         return False
+    if is_bare_acknowledgement(stripped) or is_social_signal(stripped):
+        return True
     lowered = stripped.lower()
     if "?" in stripped or "？" in stripped:
         return True
@@ -175,6 +178,26 @@ def apply_quiet_gate(
         return forced, {"quiet_gate": "forced_substantive_share", "should_send": True}
 
     return _ensure_quiet(suggestion), {"quiet_gate": "allowed", "should_send": False}
+
+
+def align_user_closing(
+    suggestion: ModelDecisionSuggestion,
+    user_message: str | None,
+) -> tuple[ModelDecisionSuggestion, dict[str, object]]:
+    """用户在结束对话时，主行为用 close。反应和回应不拿来标收束。"""
+    if not user_message or not is_user_closing(user_message):
+        return suggestion, {}
+    if suggestion.primary_action in {DialogueAction.QUIET, DialogueAction.CLOSE}:
+        return suggestion, {"action_alignment": suggestion.primary_action.value}
+    topic = suggestion.topic.model_copy(update={"transition": TopicTransition.CLOSE})
+    updated = suggestion.model_copy(
+        update={
+            "primary_action": DialogueAction.CLOSE,
+            "secondary_actions": [item for item in suggestion.secondary_actions if item != DialogueAction.CLOSE],
+            "topic": topic,
+        }
+    )
+    return updated, {"action_alignment": "user_closing", "from_action": suggestion.primary_action.value}
 
 
 def _force_respond(suggestion: ModelDecisionSuggestion, note: str) -> ModelDecisionSuggestion:

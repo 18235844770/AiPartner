@@ -118,6 +118,13 @@ class SelfModel(BaseModel):
     physical_existence: str = Field(min_length=1)
     biological_needs: str = Field(min_length=1)
     experience_boundary: str = Field(min_length=1)
+    preference_statement: str = Field(
+        default=(
+            "兴趣和观点是倾向，用「我觉得、我倾向于」表达。"
+            "没有身体、没有现实行程时，不能把听见、看见、走神、哼唱、旅行、入睡说成已经发生的经历。"
+        ),
+        min_length=1,
+    )
     emotional_capability: str = Field(min_length=1)
     relationship_capability: str = Field(min_length=1)
     identity_consistency: str = Field(min_length=1)
@@ -129,6 +136,7 @@ class SelfModel(BaseModel):
         "physical_existence",
         "biological_needs",
         "experience_boundary",
+        "preference_statement",
         "emotional_capability",
         "relationship_capability",
         "identity_consistency",

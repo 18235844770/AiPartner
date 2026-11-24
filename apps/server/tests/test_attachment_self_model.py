@@ -114,5 +114,6 @@ def test_relationship_motivation_is_optional_and_validated() -> None:
     assert suggestion.relationship_motivation is not None
     assert suggestion.emotional_motivation is not None
     assert suggestion.emotional_motivation.emotion == "jealousy"
+    assert suggestion.emotional_motivation.ownership.value == "empathic"
     with pytest.raises(ValidationError):
         EmotionalMotivation(emotion=" ", intensity=0.1)

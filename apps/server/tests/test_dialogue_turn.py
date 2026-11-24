@@ -232,7 +232,7 @@ async def test_quiet_does_not_generate_a_message(database_ready: None) -> None:
 
 @pytest.mark.asyncio
 async def test_respond_keeps_the_decided_action_and_uses_the_realization(database_ready: None) -> None:
-    adapter = _Adapter([_suggestion(DialogueAction.RESPOND, True, [DialogueAction.REACT])], text="我听见了。")
+    adapter = _Adapter([_suggestion(DialogueAction.RESPOND, True, [DialogueAction.REACT])], text="今天辛苦了。")
     async with _client(adapter) as client:
         scope = await _prepare(client)
         response = await client.post(scope.turns, json={"content": "今天有点累"})
@@ -245,12 +245,12 @@ async def test_respond_keeps_the_decided_action_and_uses_the_realization(databas
             "turn.completed",
         ]
         assert events[-1][1]["outcome"] == "replied"
-        assert events[2][1]["delta"] == "我听见了。"
+        assert events[2][1]["delta"] == "今天辛苦了"
         decision = await client.get(f"{scope.decisions}/{events[0][1]['turn_id']}")
         assert decision.json()["primary_action"] == "respond"
         assert decision.json()["secondary_actions"] == ["react"]
         messages = await client.get(scope.messages)
-        assert messages.json()[1]["content"] == "我听见了。"
+        assert messages.json()[1]["content"] == "今天辛苦了"
         assert messages.json()[1]["status"] == "completed"
         assert messages.json()[1]["id"] == events[1][1]["message_id"]
         state = await client.get(scope.state)
@@ -286,6 +286,34 @@ async def test_respond_keeps_the_decided_action_and_uses_the_realization(databas
 
 
 @pytest.mark.asyncio
+async def test_a_longer_reply_is_sent_as_consecutive_messages(database_ready: None) -> None:
+    reply = "就着锅吃也挺自在的。热气要是散了就有点可惜。"
+    adapter = _Adapter([_suggestion(DialogueAction.RESPOND, True)], text=reply)
+    async with _client(adapter) as client:
+        scope = await _prepare(client)
+        response = await client.post(scope.turns, json={"content": "锅里的面还热着"})
+        events = _events(response)
+        assert [name for name, _data in events] == [
+            "turn.started",
+            "message.started",
+            "message.delta",
+            "message.started",
+            "message.delta",
+            "message.completed",
+            "message.completed",
+            "turn.completed",
+        ]
+        deltas = [data["delta"] for name, data in events if name == "message.delta"]
+        assert deltas == ["就着锅吃也挺自在的", "热气要是散了就有点可惜"]
+        messages = await client.get(scope.messages)
+        companion = [item for item in messages.json() if item["sender_type"] == "companion"]
+        assert [item["content"] for item in companion] == deltas
+        assert companion[0]["metadata"]["delivery_group"] == companion[1]["metadata"]["delivery_group"]
+        decision = await client.get(f"{scope.decisions}/{events[0][1]['turn_id']}")
+        assert decision.json()["result_message_id"] == companion[0]["id"]
+
+
+@pytest.mark.asyncio
 async def test_decision_failure_uses_one_repair_then_a_plain_fallback(database_ready: None) -> None:
     adapter = _Adapter(
         [
@@ -302,7 +330,7 @@ async def test_decision_failure_uses_one_repair_then_a_plain_fallback(database_r
         assert decision.json()["primary_action"] == "respond"
         assert decision.json()["reasoning_summary"] == "决策模型不可用，改为简短回应"
         messages = await client.get(scope.messages)
-        assert messages.json()[1]["content"] == "我暂时无法完成这次回复。"
+        assert messages.json()[1]["content"] == "我暂时无法完成这次回复"
     assert [name for name, _messages in adapter.calls] == ["structured", "structured"]
 
 
@@ -335,7 +363,7 @@ async def test_user_realization_failure_keeps_respond_and_uses_the_fallback_sent
         decision = await client.get(f"{scope.decisions}/{events[0][1]['turn_id']}")
         assert decision.json()["primary_action"] == "respond"
         messages = await client.get(scope.messages)
-        assert messages.json()[1]["content"] == "我暂时无法完成这次回复。"
+        assert messages.json()[1]["content"] == "我暂时无法完成这次回复"
 
 
 @pytest.mark.asyncio
@@ -465,7 +493,7 @@ async def test_proactive_reply_streams_one_message(database_ready: None) -> None
             "message.completed",
             "turn.completed",
         ]
-        assert events[2][1]["delta"] == "我来找你。"
+        assert events[2][1]["delta"] == "我来找你"
         assert events[-1][1]["outcome"] == "replied"
         messages = await client.get(scope.messages)
         assert len(messages.json()) == 1

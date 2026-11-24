@@ -27,6 +27,14 @@ class TopicTransition(StrEnum):
     NONE = "none"
 
 
+class EmotionOwnership(StrEnum):
+    """这一轮情绪从哪来。不是新的情绪种类。"""
+
+    EMPATHIC = "empathic"
+    SELF = "self"
+    RELATIONAL = "relational"
+
+
 class SelfMotivationKind(StrEnum):
     """交流动机类型，不是主行为。可以为 none，不要求每轮强行产生。"""
 

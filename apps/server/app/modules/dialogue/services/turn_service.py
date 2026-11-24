@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.conversation.api.schemas import CreateMessageRequest
 from app.modules.conversation.domain.enums import SenderType
+from app.modules.conversation.repositories.models import Message
 from app.modules.conversation.services.conversation_service import ConversationService
 from app.modules.dialogue.api.stream_schemas import (
     MessageCompleted,
@@ -24,8 +25,16 @@ from app.modules.dialogue.api.stream_schemas import (
     failure_for,
 )
 from app.modules.dialogue.domain.context import decision_messages, final_send, realization_messages
+from app.modules.dialogue.domain.expression_decoration import decorate_reply
+from app.modules.dialogue.domain.message_burst import split_companion_messages
+from app.modules.dialogue.domain.speech_turn import (
+    build_turn_shape,
+    current_user_text,
+    speech_issues,
+    speech_repair_message,
+)
 from app.modules.dialogue.domain.enums import DecisionStatus, DialogueAction, TriggerType
-from app.modules.dialogue.domain.quiet_policy import apply_quiet_gate
+from app.modules.dialogue.domain.quiet_policy import align_user_closing, apply_quiet_gate
 from app.modules.dialogue.domain.suggestion import (
     FALLBACK_USER_TEXT,
     ModelDecisionSuggestion,
@@ -41,6 +50,7 @@ from app.modules.infrastructure.domain.enums import BackgroundTaskType, ModelCon
 from app.modules.infrastructure.services.background_task_service import BackgroundTaskService
 from app.modules.infrastructure.services.model_call_log_service import ModelCallLogService
 from app.modules.model_adapter.domain.errors import ModelAdapterError, ModelOutputError
+from app.modules.model_adapter.domain.messages import ChatMessage
 from app.modules.memory.services.context_service import MemoryContextService
 from app.modules.memory.services.retrieval import MemoryRetrievalService
 from app.modules.model_adapter.domain.messages import ChatMessage, TextCompletion
@@ -250,7 +260,8 @@ class DialogueTurnService:
                 consecutive_quiet=context.consecutive_quiet_turns,
                 user_triggered=True,
             )
-            validation = {**validation, **gate}
+            suggestion, aligned = align_user_closing(suggestion, content)
+            validation = {**validation, **gate, **aligned}
             action, should_send = final_send(suggestion)
             decision = await self._save(
                 session,
@@ -308,23 +319,9 @@ class DialogueTurnService:
                 yield TurnCompleted(turn_id=turn_id, outcome="quiet", sequence=sequence.next())
                 return
             message_id = uuid.uuid4()
-            yield MessageStarted(
-                turn_id=turn_id,
-                message_id=message_id,
-                role="companion",
-                sequence=sequence.next(),
-            )
             if validation.get("fallback"):
                 parts.append(FALLBACK_USER_TEXT)
-                yield MessageDelta(
-                    turn_id=turn_id,
-                    message_id=message_id,
-                    delta=FALLBACK_USER_TEXT,
-                    index=0,
-                    sequence=sequence.next(),
-                )
             else:
-                index = 0
                 try:
                     async for piece in self._realize_pieces(
                         suggestion,
@@ -332,29 +329,26 @@ class DialogueTurnService:
                         _scope_for(scope, decision.id),
                     ):
                         parts.append(piece)
-                        yield MessageDelta(
+                except ModelAdapterError as exc:
+                    if parts:
+                        yield MessageStarted(
                             turn_id=turn_id,
                             message_id=message_id,
-                            delta=piece,
-                            index=index,
+                            role="companion",
                             sequence=sequence.next(),
                         )
-                        index += 1
-                except ModelAdapterError as exc:
-                    if not parts:
-                        parts.append(FALLBACK_USER_TEXT)
                         yield MessageDelta(
                             turn_id=turn_id,
                             message_id=message_id,
-                            delta=FALLBACK_USER_TEXT,
+                            delta="".join(parts),
                             index=0,
                             sequence=sequence.next(),
                         )
-                    else:
                         await abandon(DecisionStatus.FAILED)
                         logger.info("realization failed for decision %s trace_id=%s", decision_id, trace_id)
                         yield TurnFailed(turn_id=turn_id, error=failure_for(exc), sequence=sequence.next())
                         return
+                    parts.append(FALLBACK_USER_TEXT)
             text = "".join(parts).strip()
             if not text:
                 await abandon(DecisionStatus.FAILED)
@@ -364,13 +358,29 @@ class DialogueTurnService:
                     sequence=sequence.next(),
                 )
                 return
+            bubbles = _plan_bubbles(text, message_id)
+            for bubble_id, bubble in bubbles:
+                yield MessageStarted(
+                    turn_id=turn_id,
+                    message_id=bubble_id,
+                    role="companion",
+                    sequence=sequence.next(),
+                )
+                yield MessageDelta(
+                    turn_id=turn_id,
+                    message_id=bubble_id,
+                    delta=bubble,
+                    index=0,
+                    sequence=sequence.next(),
+                )
             await self._dialogue.complete_sent_message(
                 session,
                 user_id,
                 companion_id,
                 decision.id,
-                message_id=message_id,
-                content=text,
+                message_id=bubbles[0][0],
+                content=bubbles[0][1],
+                extra_messages=bubbles[1:],
             )
             await self._schedule_memory_summary(
                 session,
@@ -401,12 +411,13 @@ class DialogueTurnService:
                 user_message=content,
             )
             settled = True
-            yield MessageCompleted(
-                turn_id=turn_id,
-                message_id=message_id,
-                finish_reason="stop",
-                sequence=sequence.next(),
-            )
+            for bubble_id, _bubble in bubbles:
+                yield MessageCompleted(
+                    turn_id=turn_id,
+                    message_id=bubble_id,
+                    finish_reason="stop",
+                    sequence=sequence.next(),
+                )
             yield TurnCompleted(turn_id=turn_id, outcome="replied", sequence=sequence.next())
         except (asyncio.CancelledError, GeneratorExit):
             await abandon(DecisionStatus.CANCELLED)
@@ -438,32 +449,59 @@ class DialogueTurnService:
         if decision.primary_action == DialogueAction.QUIET.value or decision.result_message_id is None:
             yield TurnCompleted(turn_id=decision.id, outcome="quiet", sequence=sequence.next())
             return
-        message = await self._conversations.get_owned_message(
+        messages = await self._sent_burst(
+            session,
+            user_id,
+            companion_id,
+            conversation_id,
+            decision,
+        )
+        for message in messages:
+            yield MessageStarted(
+                turn_id=decision.id,
+                message_id=message.id,
+                role="companion",
+                sequence=sequence.next(),
+            )
+            yield MessageDelta(
+                turn_id=decision.id,
+                message_id=message.id,
+                delta=message.content,
+                index=0,
+                sequence=sequence.next(),
+            )
+            yield MessageCompleted(
+                turn_id=decision.id,
+                message_id=message.id,
+                finish_reason="stop",
+                sequence=sequence.next(),
+            )
+        yield TurnCompleted(turn_id=decision.id, outcome="replied", sequence=sequence.next())
+
+    async def _sent_burst(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        decision: DialogueDecision,
+    ) -> list[Message]:
+        if decision.result_message_id is None:
+            return []
+        anchor = await self._conversations.get_owned_message(
             session,
             user_id,
             companion_id,
             decision.result_message_id,
         )
-        yield MessageStarted(
-            turn_id=decision.id,
-            message_id=message.id,
-            role="companion",
-            sequence=sequence.next(),
-        )
-        yield MessageDelta(
-            turn_id=decision.id,
-            message_id=message.id,
-            delta=message.content,
-            index=0,
-            sequence=sequence.next(),
-        )
-        yield MessageCompleted(
-            turn_id=decision.id,
-            message_id=message.id,
-            finish_reason="stop",
-            sequence=sequence.next(),
-        )
-        yield TurnCompleted(turn_id=decision.id, outcome="replied", sequence=sequence.next())
+        listed = await self._conversations.list_messages(session, user_id, companion_id, conversation_id)
+        group = str(decision.id)
+        grouped = [
+            item
+            for item in listed
+            if str((item.metadata_ or {}).get("delivery_group") or "") == group
+        ]
+        return grouped or [anchor]
 
     async def _realize_pieces(
         self,
@@ -471,17 +509,68 @@ class DialogueTurnService:
         context: TurnContext,
         scope: ModelCallScope,
     ) -> AsyncIterator[str]:
+        """先收齐正文并检查口语回合，通过后再交给 SSE。退回的稿不产生 delta。"""
         messages = context.realization_input(suggestion)
+        user_text = current_user_text(context.immediate_facts, context.recent_messages)
+        shape = build_turn_shape(suggestion.primary_action.value, user_text)
+        try:
+            draft = await self._collect_realization(messages, scope)
+        except _PartialRealization as partial:
+            if partial.text:
+                yield partial.text
+            raise partial.cause from partial
+        if not draft:
+            return
+        ownership = (
+            suggestion.emotional_motivation.ownership.value if suggestion.emotional_motivation is not None else None
+        )
+        issues = speech_issues(draft, shape, user_text, emotion_ownership=ownership)
+        text = draft
+        if issues:
+            logger.info("speech rewrite issues=%s", "；".join(issues))
+            repaired = [
+                *messages,
+                ChatMessage(role="assistant", content=draft),
+                ChatMessage(role="user", content=speech_repair_message(issues)),
+            ]
+            try:
+                second = await self._collect_realization(repaired, scope)
+            except ModelAdapterError:
+                logger.info("speech rewrite failed, keep first draft")
+                second = ""
+            if second:
+                text = second
+                again = speech_issues(second, shape, user_text, emotion_ownership=ownership)
+                if again:
+                    logger.info("speech turn kept after rewrite issues=%s", "；".join(again))
+        if text:
+            text = decorate_reply(
+                text,
+                mbti_type=context.mbti_type,
+                emotion=context.emotion_primary,
+                action=suggestion.primary_action.value,
+                user_text=user_text,
+                recent_messages=context.recent_messages,
+                fact_correct=suggestion.fact_check.should_correct,
+                strong=_emotion_is_strong(context.emotion_detail, context.emotion_primary, suggestion),
+            )
+            yield text
+
+    async def _collect_realization(self, messages: list[ChatMessage], scope: ModelCallScope) -> str:
         stream_text = getattr(self._adapter, "stream_text", None)
         if stream_text is not None:
-            async for piece in stream_text(ModelConfigKey.CONVERSATION, messages, scope):
-                if piece:
-                    yield piece
-            return
+            parts: list[str] = []
+            try:
+                async for piece in stream_text(ModelConfigKey.CONVERSATION, messages, scope):
+                    if piece:
+                        parts.append(piece)
+            except ModelAdapterError as exc:
+                if parts:
+                    raise _PartialRealization("".join(parts), exc) from exc
+                raise
+            return "".join(parts).strip()
         completion = await self._adapter.complete_text(ModelConfigKey.CONVERSATION, messages, scope)
-        content = completion.content.strip()
-        if content:
-            yield content
+        return completion.content.strip()
 
     async def _schedule_memory_extract(
         self,
@@ -675,29 +764,24 @@ class DialogueTurnService:
                 yield TurnCompleted(turn_id=turn_id, outcome="quiet", sequence=sequence.next())
                 return
             message_id = uuid.uuid4()
-            index = 0
-            started = False
             try:
                 async for piece in self._realize_pieces(suggestion, context, _scope_for(scope, decision.id)):
-                    if not started:
-                        yield MessageStarted(
-                            turn_id=turn_id,
-                            message_id=message_id,
-                            role="companion",
-                            sequence=sequence.next(),
-                        )
-                        started = True
                     parts.append(piece)
+            except ModelAdapterError as exc:
+                if parts:
+                    yield MessageStarted(
+                        turn_id=turn_id,
+                        message_id=message_id,
+                        role="companion",
+                        sequence=sequence.next(),
+                    )
                     yield MessageDelta(
                         turn_id=turn_id,
                         message_id=message_id,
-                        delta=piece,
-                        index=index,
+                        delta="".join(parts),
+                        index=0,
                         sequence=sequence.next(),
                     )
-                    index += 1
-            except ModelAdapterError as exc:
-                if parts:
                     await abandon(DecisionStatus.FAILED)
                     logger.info("proactive realization failed for decision %s trace_id=%s", decision_id, trace_id)
                     yield TurnFailed(turn_id=turn_id, error=failure_for(exc), sequence=sequence.next())
@@ -714,14 +798,6 @@ class DialogueTurnService:
                 return
             text = "".join(parts).strip()
             if not text or conversation_id is None:
-                if started:
-                    await abandon(DecisionStatus.FAILED)
-                    yield TurnFailed(
-                        turn_id=turn_id,
-                        error=TurnErrorBody(code="MODEL_OUTPUT_INVALID", message="模型输出不可用", retryable=False),
-                        sequence=sequence.next(),
-                    )
-                    return
                 await self._dialogue.suppress_unsent(
                     session,
                     user_id,
@@ -732,13 +808,29 @@ class DialogueTurnService:
                 settled = True
                 yield TurnCompleted(turn_id=turn_id, outcome="quiet", sequence=sequence.next())
                 return
+            bubbles = _plan_bubbles(text, message_id)
+            for bubble_id, bubble in bubbles:
+                yield MessageStarted(
+                    turn_id=turn_id,
+                    message_id=bubble_id,
+                    role="companion",
+                    sequence=sequence.next(),
+                )
+                yield MessageDelta(
+                    turn_id=turn_id,
+                    message_id=bubble_id,
+                    delta=bubble,
+                    index=0,
+                    sequence=sequence.next(),
+                )
             await self._dialogue.complete_sent_message(
                 session,
                 user_id,
                 companion_id,
                 decision.id,
-                message_id=message_id,
-                content=text,
+                message_id=bubbles[0][0],
+                content=bubbles[0][1],
+                extra_messages=bubbles[1:],
             )
             if conversation_id is not None:
                 await self._schedule_memory_summary(
@@ -769,12 +861,13 @@ class DialogueTurnService:
                 user_spoke=False,
             )
             settled = True
-            yield MessageCompleted(
-                turn_id=turn_id,
-                message_id=message_id,
-                finish_reason="stop",
-                sequence=sequence.next(),
-            )
+            for bubble_id, _bubble in bubbles:
+                yield MessageCompleted(
+                    turn_id=turn_id,
+                    message_id=bubble_id,
+                    finish_reason="stop",
+                    sequence=sequence.next(),
+                )
             yield TurnCompleted(turn_id=turn_id, outcome="replied", sequence=sequence.next())
         except (asyncio.CancelledError, GeneratorExit):
             await abandon(DecisionStatus.CANCELLED)
@@ -956,6 +1049,11 @@ class DialogueTurnService:
                 self_motivation_kind=suggestion.self_motivation.kind,
                 relationship_motivation_kind=relationship_kind,
                 user_message=user_message,
+                emotion_ownership=(
+                    suggestion.emotional_motivation.ownership.value
+                    if suggestion.emotional_motivation is not None
+                    else None
+                ),
             )
             if plan is None:
                 return
@@ -1025,6 +1123,38 @@ class DialogueTurnService:
 
 
 _PROACTIVE_MODES = {InteractionMode.AVAILABLE, InteractionMode.WAITING}
+
+
+class _PartialRealization(Exception):
+    """流式生成中途失败。已收到的文字还没通过口语检查，不能当成完成。"""
+
+    def __init__(self, text: str, cause: ModelAdapterError) -> None:
+        self.text = text
+        self.cause = cause
+
+
+def _plan_bubbles(text: str, first_id: uuid.UUID) -> list[tuple[uuid.UUID, str]]:
+    pieces = split_companion_messages(text)
+    if not pieces:
+        pieces = [text]
+    ids = [first_id, *[uuid.uuid4() for _ in pieces[1:]]]
+    return list(zip(ids, pieces, strict=True))
+
+
+def _emotion_is_strong(
+    emotion_detail: dict[str, object] | None,
+    emotion_primary: str,
+    suggestion: ModelDecisionSuggestion,
+) -> bool:
+    motive = suggestion.emotional_motivation
+    if motive is not None and motive.intensity >= 0.7:
+        return True
+    detail = emotion_detail or {}
+    levels = detail.get("levels")
+    if not isinstance(levels, dict):
+        return False
+    level = levels.get(emotion_primary, 0)
+    return isinstance(level, (int, float)) and not isinstance(level, bool) and float(level) >= 70
 
 
 def _scope_for(scope: ModelCallScope, decision_id: uuid.UUID) -> ModelCallScope:

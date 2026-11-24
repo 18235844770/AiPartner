@@ -16,6 +16,8 @@ export function useVoicePlayback(getScope: () => ConversationScope | null) {
   const activeTaskId = ref<string | null>(null);
   const error = ref("");
   const synthesizingIds = ref<Set<string>>(new Set());
+  const queue: string[] = [];
+  let draining = false;
   let ttsAbort: AbortController | null = null;
 
   const player = createAudioPlayer((state) => {
@@ -33,12 +35,47 @@ export function useVoicePlayback(getScope: () => ConversationScope | null) {
   }
 
   async function speakMessage(messageId: string): Promise<void> {
+    queue.length = 0;
+    queue.push(messageId);
+    await haltPlayback();
+    if (!draining) {
+      void drain();
+    }
+  }
+
+  function enqueue(messageId: string): void {
+    queue.push(messageId);
+    if (!draining) {
+      void drain();
+    }
+  }
+
+  async function drain(): Promise<void> {
+    if (draining) {
+      return;
+    }
+    draining = true;
+    try {
+      while (queue.length > 0) {
+        const messageId = queue.shift();
+        if (messageId) {
+          await playMessage(messageId);
+        }
+      }
+    } finally {
+      draining = false;
+      if (queue.length > 0) {
+        void drain();
+      }
+    }
+  }
+
+  async function playMessage(messageId: string): Promise<void> {
     const scope = getScope();
     if (!scope || !enabled.value) {
       return;
     }
     error.value = "";
-    await interrupt();
     activeMessageId.value = messageId;
     markSynthesizing(messageId, true);
     const controller = new AbortController();
@@ -68,7 +105,7 @@ export function useVoicePlayback(getScope: () => ConversationScope | null) {
     }
   }
 
-  async function interrupt(): Promise<void> {
+  async function haltPlayback(): Promise<void> {
     ttsAbort?.abort();
     ttsAbort = null;
     player.stop();
@@ -83,6 +120,11 @@ export function useVoicePlayback(getScope: () => ConversationScope | null) {
         // 打断以本地停播为准。
       }
     }
+  }
+
+  async function interrupt(): Promise<void> {
+    queue.length = 0;
+    await haltPlayback();
   }
 
   function pause(): void {
@@ -105,6 +147,7 @@ export function useVoicePlayback(getScope: () => ConversationScope | null) {
     error,
     synthesizingIds,
     speakMessage,
+    enqueue,
     interrupt,
     pause,
     resume,

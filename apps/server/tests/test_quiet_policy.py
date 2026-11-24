@@ -4,6 +4,7 @@ from app.modules.dialogue.domain.decision import DecisionMotivation, DecisionTop
 from app.modules.dialogue.domain.enums import DialogueAction, TopicTransition
 from app.modules.dialogue.domain.quiet_policy import (
     MAX_CONSECUTIVE_QUIET,
+    align_user_closing,
     apply_quiet_gate,
     requires_response,
     user_requests_silence,
@@ -28,6 +29,33 @@ def _quiet() -> ModelDecisionSuggestion:
     )
 
 
+def _react() -> ModelDecisionSuggestion:
+    return ModelDecisionSuggestion(
+        should_send=True,
+        primary_action=DialogueAction.REACT,
+        motivation=DecisionMotivation(primary="接住"),
+        user_need=UserNeed(summary="用户要睡了"),
+        self_motivation=SelfMotivation(
+            interest="没有",
+            viewpoint="没有",
+            desire_to_express="道一句晚安",
+        ),
+        topic=DecisionTopic(transition=TopicTransition.CONTINUE),
+        confidence=Decimal("0.8"),
+        reasoning_summary="用反应收尾",
+    )
+
+
+def test_user_closing_is_relabeled_close() -> None:
+    updated, meta = align_user_closing(_react(), "今天就这样，我先睡了")
+    assert updated.primary_action == DialogueAction.CLOSE
+    assert updated.topic.transition == TopicTransition.CLOSE
+    assert meta["from_action"] == "react"
+    same, empty = align_user_closing(_react(), "我要是这会儿就睡，你会觉得扫兴吗")
+    assert same.primary_action == DialogueAction.REACT
+    assert empty == {}
+
+
 def test_questions_and_greetings_require_response() -> None:
     assert requires_response("今天过得怎么样？")
     assert requires_response("你好")
@@ -49,10 +77,33 @@ def test_question_cannot_stay_quiet() -> None:
     assert meta["quiet_gate"] == "forced_requires_response"
 
 
+def test_laughter_cannot_stay_quiet() -> None:
+    suggestion, meta = apply_quiet_gate(
+        _quiet(),
+        user_message="哈哈",
+        consecutive_quiet=0,
+        user_triggered=True,
+    )
+    assert suggestion.primary_action == DialogueAction.RESPOND
+    assert meta["quiet_gate"] == "forced_requires_response"
+
+
+def test_bare_acknowledgement_cannot_stay_quiet() -> None:
+    suggestion, meta = apply_quiet_gate(
+        _quiet(),
+        user_message="哦",
+        consecutive_quiet=0,
+        user_triggered=True,
+    )
+    assert suggestion.primary_action == DialogueAction.RESPOND
+    assert suggestion.should_send is True
+    assert meta["quiet_gate"] == "forced_requires_response"
+
+
 def test_consecutive_quiet_is_blocked() -> None:
     suggestion, meta = apply_quiet_gate(
         _quiet(),
-        user_message="嗯",
+        user_message="下雨了",
         consecutive_quiet=MAX_CONSECUTIVE_QUIET,
         user_triggered=True,
     )

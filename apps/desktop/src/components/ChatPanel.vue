@@ -22,8 +22,14 @@ const scopeOf = () => ({
 });
 
 const voice = useVoicePlayback(scopeOf);
+let spokenTurn = "";
 const chat = useChat(scopeOf, {
-  onCompanionMessageCompleted: (messageId) => {
+  onCompanionMessageCompleted: (messageId, turnId) => {
+    if (turnId && turnId === spokenTurn) {
+      voice.enqueue(messageId);
+      return;
+    }
+    spokenTurn = turnId;
     void voice.speakMessage(messageId);
   },
   onTurnInterrupted: () => {

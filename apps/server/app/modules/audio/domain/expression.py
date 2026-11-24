@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.persona.domain.voice_expression import VoiceExpressionProfile
 from app.modules.state.domain.emotion import EMOTION_KEYS, EMOTION_LABELS
+from app.shared.speech_marks import strip_non_speech_marks
 
 # 变更 instruct 契约时递增，用于使旧 TTS 缓存失效。
 # v5：合成对齐 A_raw（官方 text_frontend + 正确限幅），旧缓存不可复用。
@@ -128,7 +129,7 @@ def prepare_speak_text(content: str) -> str:
         if stripped.startswith(("决策：", "意图：", "动机：", "【决策", "[decision")):
             continue
         lines.append(line)
-    text = "\n".join(lines).strip()
+    text = strip_non_speech_marks("\n".join(lines).strip())
     # 换行在 TTS 里常变成突兀气口；按句读收口，减轻顿挫
     parts = [p.strip() for p in re.split(r"\n+", text) if p.strip()]
     if not parts:

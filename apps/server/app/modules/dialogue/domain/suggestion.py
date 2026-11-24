@@ -3,7 +3,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.dialogue.domain.decision import DecisionMotivation, DecisionTopic
-from app.modules.dialogue.domain.enums import DialogueAction, SelfMotivationKind, TopicTransition
+from app.modules.dialogue.domain.enums import DialogueAction, EmotionOwnership, SelfMotivationKind, TopicTransition
 
 FALLBACK_USER_TEXT = "我暂时无法完成这次回复。"
 RECENT_MESSAGE_LIMIT = 10
@@ -180,13 +180,30 @@ class SelfMotivation(BaseModel):
         return stripped or None
 
 
+_OWNERSHIP_ALIASES = {
+    "empathy": EmotionOwnership.EMPATHIC,
+    "empathic": EmotionOwnership.EMPATHIC,
+    "共情": EmotionOwnership.EMPATHIC,
+    "self": EmotionOwnership.SELF,
+    "own": EmotionOwnership.SELF,
+    "自身": EmotionOwnership.SELF,
+    "relational": EmotionOwnership.RELATIONAL,
+    "relationship": EmotionOwnership.RELATIONAL,
+    "关系": EmotionOwnership.RELATIONAL,
+}
+
+
 class EmotionalMotivation(BaseModel):
-    """由当前情绪驱动的表达动机。可以为空，不要求每轮都有。"""
+    """由当前情绪驱动的表达动机。可以为空，不要求每轮都有。
+
+    ownership 区分共情、自身立场和关系在意。缺省按共情，避免把对方的情绪直接写成自己的。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     emotion: str = Field(min_length=1, max_length=32)
     intensity: float = Field(ge=0, le=1)
+    ownership: EmotionOwnership = EmotionOwnership.EMPATHIC
 
     @field_validator("emotion", mode="before")
     @classmethod
@@ -207,6 +224,21 @@ class EmotionalMotivation(BaseModel):
     @classmethod
     def coerce_intensity(cls, value: object) -> object:
         return _coerce_intensity(value)
+
+    @field_validator("ownership", mode="before")
+    @classmethod
+    def coerce_ownership(cls, value: object) -> object:
+        if value is None or value == "":
+            return EmotionOwnership.EMPATHIC
+        if isinstance(value, EmotionOwnership):
+            return value
+        text = str(value).strip().lower()
+        if text in _OWNERSHIP_ALIASES:
+            return _OWNERSHIP_ALIASES[text]
+        try:
+            return EmotionOwnership(text)
+        except ValueError:
+            return EmotionOwnership.EMPATHIC
 
 
 class RelationshipMotivation(BaseModel):

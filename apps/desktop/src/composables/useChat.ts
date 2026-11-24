@@ -14,7 +14,7 @@ import { errorText } from "../services/http";
 import { streamUserTurn, type TurnEvent } from "../services/turns";
 
 export type ChatHooks = {
-  onCompanionMessageCompleted?: (messageId: string) => void;
+  onCompanionMessageCompleted?: (messageId: string, turnId: string) => void;
   onTurnInterrupted?: () => void;
 };
 
@@ -221,7 +221,7 @@ export function useChat(getScope: () => ConversationScope | null, hooks: ChatHoo
         messages.value = messages.value.map((item) =>
           item.id === messageId ? { ...item, status: "completed" } : item,
         );
-        hooks.onCompanionMessageCompleted?.(messageId);
+        hooks.onCompanionMessageCompleted?.(messageId, textValue(event.data.turn_id));
       }
       return current;
     }

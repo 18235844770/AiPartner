@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.conversation.api.schemas import CreateMessageRequest
+from app.modules.conversation.api.schemas import CreateMessageRequest, MessageMetadata
 from app.modules.conversation.domain.enums import MessageStatus, SenderType
 from app.modules.conversation.services.conversation_service import ConversationService
 from app.modules.dialogue.api.schemas import DecisionResponse, RealizeDecisionRequest, RecordDecisionRequest
@@ -141,6 +141,7 @@ class DialogueService:
         *,
         message_id: uuid.UUID,
         content: str,
+        extra_messages: list[tuple[uuid.UUID, str]] | None = None,
     ) -> DialogueDecision:
         if session.in_transaction():
             decision = await self._complete_sent_message(
@@ -150,6 +151,7 @@ class DialogueService:
                 decision_id,
                 message_id=message_id,
                 content=content,
+                extra_messages=extra_messages,
             )
         else:
             async with session.begin():
@@ -160,6 +162,7 @@ class DialogueService:
                     decision_id,
                     message_id=message_id,
                     content=content,
+                    extra_messages=extra_messages,
                 )
         logger.info("completed decision %s as message %s", decision.id, decision.result_message_id)
         return decision
@@ -173,6 +176,7 @@ class DialogueService:
         *,
         message_id: uuid.UUID,
         content: str,
+        extra_messages: list[tuple[uuid.UUID, str]] | None = None,
     ) -> DialogueDecision:
         await self._identity.get_owned_companion(session, user_id, companion_id)
         decision = await self._decisions.get_for_update(session, decision_id, companion_id)
@@ -180,6 +184,7 @@ class DialogueService:
             raise NotFoundError("决策不存在")
         if decision.status != DecisionStatus.APPROVED.value or decision.conversation_id is None:
             raise ConflictError("决策当前不能生成消息")
+        metadata = MessageMetadata(delivery_group=decision_id)
         message = await self._conversations.record_turn_message(
             session,
             user_id,
@@ -188,7 +193,19 @@ class DialogueService:
             message_id=message_id,
             content=content,
             status=MessageStatus.COMPLETED,
+            metadata=metadata,
         )
+        for extra_id, extra_content in extra_messages or []:
+            await self._conversations.record_turn_message(
+                session,
+                user_id,
+                companion_id,
+                decision.conversation_id,
+                message_id=extra_id,
+                content=extra_content,
+                status=MessageStatus.COMPLETED,
+                metadata=metadata,
+            )
         decision.result_message_id = message.id
         decision.status = DecisionStatus.COMPLETED.value
         decision.completed_at = datetime.now(UTC)
