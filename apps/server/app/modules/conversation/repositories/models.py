@@ -38,6 +38,12 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "(status = 'archived' AND archived_at IS NOT NULL) OR (status <> 'archived' AND archived_at IS NULL)",
             name="archive_consistency",
         ),
+        Index(
+            "uq_conversations_one_active",
+            "companion_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

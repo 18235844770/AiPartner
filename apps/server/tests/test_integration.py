@@ -92,6 +92,40 @@ async def test_message_sequence_and_idempotency(database_ready: None) -> None:
     await _cleanup(uuid.UUID(user_id))
 
 
+async def test_one_window_is_reused_and_its_log_can_be_cleared(database_ready: None) -> None:
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        user = await client.post("/api/users", json={"display_name": "单窗口用户"})
+        assert user.status_code == 201
+        user_id = user.json()["id"]
+        companion = await client.post(f"/api/users/{user_id}/companions", json={"name": "单窗口陪伴"})
+        assert companion.status_code == 201
+        companion_id = companion.json()["id"]
+        base = f"/api/users/{user_id}/companions/{companion_id}/conversations"
+        first = await client.post(base, json={"title": "第一次"})
+        second = await client.post(base, json={"title": "不应该再开一个"})
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert second.json()["id"] == first.json()["id"]
+        conversation_id = first.json()["id"]
+        messages = f"{base}/{conversation_id}/messages"
+        posted = await client.post(messages, json={"sender_type": "user", "content": "先记一句"})
+        assert posted.status_code == 201
+        cleared = await client.delete(messages)
+        assert cleared.status_code == 200
+        assert cleared.json()["deleted_count"] == 1
+        assert (await client.get(messages)).json() == []
+        again = await client.post(messages, json={"sender_type": "companion", "content": "窗口还在"})
+        assert again.status_code == 201
+        assert again.json()["sequence_number"] == 1
+        listed = await client.get(base)
+        active = [item for item in listed.json() if item["status"] == "active"]
+        assert len(active) == 1
+        assert active[0]["id"] == conversation_id
+    await _cleanup(uuid.UUID(user_id))
+
+
 async def _insert_user(session: AsyncSession, user_id: uuid.UUID) -> None:
     await session.execute(
         text(

@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.conversation.domain.enums import ConversationStatus
 from app.modules.conversation.repositories.models import Conversation
 
 
@@ -43,3 +44,21 @@ class ConversationRepository:
             .order_by(Conversation.created_at)
         )
         return list(result.all())
+
+    async def get_active_for_companion(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+    ) -> Conversation | None:
+        statement = (
+            select(Conversation)
+            .where(
+                Conversation.user_id == user_id,
+                Conversation.companion_id == companion_id,
+                Conversation.status == ConversationStatus.ACTIVE.value,
+            )
+            .order_by(Conversation.last_message_at.desc().nulls_last(), Conversation.created_at.desc())
+            .limit(1)
+        )
+        return (await session.execute(statement)).scalar_one_or_none()

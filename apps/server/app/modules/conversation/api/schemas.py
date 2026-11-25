@@ -58,6 +58,10 @@ class CreateMessageRequest(BaseModel):
         return stripped
 
 
+class ClearMessagesResponse(BaseModel):
+    deleted_count: int = Field(ge=0)
+
+
 class MessageResponse(BaseModel):
     id: uuid.UUID
     conversation_id: uuid.UUID

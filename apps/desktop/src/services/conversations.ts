@@ -54,3 +54,9 @@ export function appendMessage(
     body: JSON.stringify(body),
   });
 }
+
+export function clearMessages(scope: ConversationScope, conversationId: string): Promise<{ deleted_count: number }> {
+  return requestJson<{ deleted_count: number }>(`${conversationsUrl(scope)}/${conversationId}/messages`, {
+    method: "DELETE",
+  });
+}

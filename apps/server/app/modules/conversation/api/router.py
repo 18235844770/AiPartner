@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.conversation.api.schemas import (
+    ClearMessagesResponse,
     ConversationResponse,
     CreateConversationRequest,
     CreateMessageRequest,
@@ -50,15 +51,17 @@ def to_message_response(message: Message) -> MessageResponse:
     )
 
 
-@router.post("", response_model=ConversationResponse, status_code=201)
+@router.post("", response_model=ConversationResponse)
 async def create_conversation(
     user_id: uuid.UUID,
     companion_id: uuid.UUID,
     body: CreateConversationRequest,
+    response: Response,
     session: AsyncSession = Depends(get_session),
 ) -> ConversationResponse:
     conversation = await conversation_service.create_conversation(session, user_id, companion_id, body)
-    return to_conversation_response(conversation)
+    response.status_code = 201 if conversation.created else 200
+    return to_conversation_response(conversation.conversation)
 
 
 @router.get("", response_model=list[ConversationResponse])
@@ -69,6 +72,17 @@ async def list_conversations(
 ) -> list[ConversationResponse]:
     conversations = await conversation_service.list_conversations(session, user_id, companion_id)
     return [to_conversation_response(conversation) for conversation in conversations]
+
+
+@router.delete("/{conversation_id}/messages", response_model=ClearMessagesResponse)
+async def clear_messages(
+    user_id: uuid.UUID,
+    companion_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+) -> ClearMessagesResponse:
+    deleted = await conversation_service.clear_messages(session, user_id, companion_id, conversation_id)
+    return ClearMessagesResponse(deleted_count=deleted)
 
 
 @router.post("/{conversation_id}/archive", response_model=ConversationResponse)

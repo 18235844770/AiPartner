@@ -209,7 +209,7 @@ class WorkerSettings:
     cron_jobs = [
         cron(dispatch_outbox, second={0, 15, 30, 45}, run_at_startup=True, max_tries=1),
         cron(schedule_state_maintenance, minute={0, 15, 30, 45}, run_at_startup=True, max_tries=1),
-        cron(schedule_proactive_checks, minute={5, 20, 35, 50}, run_at_startup=True, max_tries=1),
+        cron(schedule_proactive_checks, minute=set(range(0, 60, 5)), run_at_startup=True, max_tries=1),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_jobs = 10

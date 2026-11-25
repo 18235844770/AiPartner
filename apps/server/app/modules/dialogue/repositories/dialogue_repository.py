@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.dialogue.repositories.models import DialogueDecision
@@ -64,3 +64,28 @@ class DialogueRepository:
             .order_by(DialogueDecision.created_at.desc())
         )
         return list((await session.execute(statement)).scalars().all())
+
+    async def ids_for_conversation(
+        self,
+        session: AsyncSession,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> list[uuid.UUID]:
+        statement = select(DialogueDecision.id).where(
+            DialogueDecision.companion_id == companion_id,
+            DialogueDecision.conversation_id == conversation_id,
+        )
+        return list((await session.execute(statement)).scalars().all())
+
+    async def delete_for_conversation(
+        self,
+        session: AsyncSession,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        await session.execute(
+            delete(DialogueDecision).where(
+                DialogueDecision.companion_id == companion_id,
+                DialogueDecision.conversation_id == conversation_id,
+            )
+        )

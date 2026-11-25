@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Companion · 移动端界面草案</title>
+  <style>
+    :root {
+      --paper: #f8f1f6;
+      --paper-deep: #f3e4ee;
+      --card: #fffbfd;
+      --ink: #2c1b2a;
+      --muted: #8d7088;
+      --soft: #6d516c;
+      --line: #f0e0ea;
+      --line-strong: #e4cddc;
+      --rose: #b43d78;
+      --rose-deep: #8e2d62;
+      --rose-ink: #fff7fb;
+      --blush: #fde8f3;
+      --blush-line: #f6cfe3;
+      --lilac: #c9a4d4;
+      --caution: #a84d6e;
+      --studio: #eddde8;
+      --frame: #2a1828;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100%;
+      background:
+        radial-gradient(900px 420px at 8% -8%, #fbe7f3 0%, transparent 58%),
+        radial-gradient(800px 380px at 100% 0%, #efe4f8 0%, transparent 50%),
+        var(--studio);
+      color: var(--ink);
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .board {
+      max-width: 1760px;
+      margin: 0 auto;
+      padding: 48px 40px 64px;
+    }
+
+    .mast {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 32px;
+      margin-bottom: 36px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 40px;
+      font-weight: 620;
+      letter-spacing: -0.04em;
+    }
+
+    .deck {
+      max-width: 640px;
+      margin: 10px 0 0;
+      color: var(--soft);
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    .principles {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+      max-width: 420px;
+    }
+
+    .principles span {
+      padding: 8px 12px;
+      background: var(--card);
+      border: 1px solid #ead6e4;
+      border-radius: 999px;
+      color: var(--soft);
+      font-size: 13px;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 28px;
+      align-items: flex-start;
+    }
+
+    .shot { width: 390px; }
+    .shot figcaption {
+      margin-top: 14px;
+      padding: 0 8px;
+    }
+    .shot strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 650;
+    }
+    .shot em {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-style: normal;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .device {
+      width: 390px;
+      height: 844px;
+      padding: 10px;
+      background: var(--frame);
+      border-radius: 46px;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.18) inset,
+        0 28px 56px rgba(90, 30, 70, 0.2);
+    }
+
+    .screen {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(460px 240px at 88% -8%, #ffe4f2 0%, transparent 62%),
+        radial-gradient(360px 220px at -12% 18%, #f3e4f8 0%, transparent 58%),
+        var(--paper);
+      border-radius: 36px;
+      color: var(--ink);
+    }
+
+    .status {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      height: 54px;
+      padding: 12px 22px 0;
+      font-size: 14px;
+      font-weight: 650;
+    }
+    .status .right {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      align-items: center;
+    }
+    .island {
+      width: 108px;
+      height: 28px;
+      background: var(--frame);
+      border-radius: 999px;
+    }
+    .sig {
+      width: 16px;
+      height: 10px;
+      border: 1.5px solid var(--ink);
+      border-radius: 2px;
+      position: relative;
+    }
+    .sig::after {
+      content: "";
+      position: absolute;
+      inset: 1.5px;
+      width: 60%;
+      background: var(--ink);
+    }
+
+    .body {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+      padding: 4px 20px 0;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      margin-top: auto;
+      padding: 10px 16px 18px;
+      background: rgba(255, 251, 253, 0.9);
+      border-top: 1px solid var(--line);
+    }
+    .tabs button {
+      display: grid;
+      gap: 3px;
+      justify-items: center;
+      padding: 6px 0 2px;
+      border: 0;
+      background: transparent;
+      color: #c4a8bc;
+      font: inherit;
+      font-size: 11px;
+    }
+    .tabs button.on { color: var(--rose); }
+    .tabs svg { width: 22px; height: 22px; }
+
+    .home-top {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-top: 8px;
+    }
+    .kicker {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.14em;
+    }
+    .name {
+      margin: 2px 0 0;
+      font-size: 40px;
+      font-weight: 640;
+      letter-spacing: -0.045em;
+      line-height: 1;
+    }
+    .presence {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      width: fit-content;
+      margin: 12px 0 0;
+      padding: 4px 10px 4px 8px;
+      background: var(--blush);
+      border-radius: 999px;
+      color: var(--rose);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      background: #e25b9a;
+      border-radius: 999px;
+      box-shadow: 0 0 0 3px rgba(226, 91, 154, 0.16);
+    }
+
+    .mark {
+      display: grid;
+      width: 72px;
+      height: 72px;
+      place-items: center;
+      background:
+        radial-gradient(circle at 32% 28%, #fff5fb 0%, #f7b6d4 34%, #c44d88 72%, #7a2a5c 100%);
+      border-radius: 999px;
+      color: #fff7fb;
+      font-size: 28px;
+      font-weight: 680;
+      box-shadow: 0 10px 24px rgba(180, 61, 120, 0.28);
+    }
+
+    .note {
+      margin-top: 22px;
+      padding: 18px 18px 16px;
+      background: linear-gradient(180deg, #fff 0%, #fff5fa 100%);
+      border: 1px solid #f3d5e6;
+      border-radius: 22px;
+      box-shadow: 0 12px 28px rgba(160, 70, 120, 0.07);
+    }
+    .note p { margin: 0; }
+    .note .who {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .note blockquote {
+      margin: 10px 0 0;
+      font-size: 20px;
+      font-weight: 560;
+      line-height: 1.45;
+      letter-spacing: -0.02em;
+    }
+    .note .when {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .btn {
+      height: 48px;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      font: inherit;
+      font-size: 15px;
+      font-weight: 620;
+    }
+    .btn.primary {
+      background: linear-gradient(180deg, #d05690 0%, #a33472 100%);
+      color: var(--rose-ink);
+      box-shadow: 0 8px 18px rgba(163, 52, 114, 0.24);
+    }
+    .btn.ghost {
+      background: rgba(255, 251, 253, 0.72);
+      border-color: var(--blush-line);
+      color: var(--rose-deep);
+    }
+
+    .section-label {
+      margin: 26px 4px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+    }
+    .day {
+      display: grid;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+    .day li {
+      padding: 13px 16px 13px 18px;
+      border-top: 1px solid var(--line);
+      border-left: 3px solid transparent;
+      font-size: 14.5px;
+      line-height: 1.4;
+    }
+    .day li:nth-child(1) { border-left-color: #e25b9a; }
+    .day li:nth-child(2) { border-left-color: #d7a0c4; }
+    .day li:nth-child(3) { border-left-color: #c9a4d4; }
+    .day li:first-child { border-top: 0; }
+    .day small {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .chat-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 2px 4px 10px;
+    }
+    .icon-btn {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+    }
+    .mini-mark {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      background: radial-gradient(circle at 32% 28%, #fff5fb 0%, #f7b6d4 36%, #c44d88 100%);
+      border-radius: 999px;
+      color: #fff7fb;
+      font-size: 15px;
+      font-weight: 680;
+    }
+    .chat-head .who { flex: 1; min-width: 0; }
+    .chat-head h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 650;
+    }
+    .chat-head p {
+      margin: 0;
+      color: var(--rose);
+      font-size: 12px;
+    }
+
+    .thread {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 0;
+      padding-bottom: 12px;
+      overflow: hidden;
+    }
+    .stamp {
+      align-self: center;
+      margin: 4px 0 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .bubble {
+      max-width: 78%;
+      padding: 11px 13px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .bubble.her { align-self: flex-start; border-bottom-left-radius: 6px; }
+    .bubble.her {
+      align-self: flex-start;
+      background: rgba(255, 251, 253, 0.92);
+      border-bottom-left-radius: 6px;
+    }
+    .bubble.me {
+      align-self: flex-end;
+      background: var(--blush);
+      border-color: var(--blush-line);
+      border-bottom-right-radius: 6px;
+    }
+
+    .composer {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+      padding: 8px 0 16px;
+    }
+    .round {
+      display: grid;
+      flex: 0 0 auto;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      background: var(--card);
+      border-radius: 999px;
+      color: var(--ink);
+    }
+    .round.send {
+      border-color: transparent;
+      background: linear-gradient(180deg, #d05690, #a33472);
+      color: var(--rose-ink);
+      box-shadow: 0 6px 14px rgba(163, 52, 114, 0.22);
+    }
+    .field {
+      flex: 1;
+      min-height: 44px;
+      padding: 12px 14px;
+      background: rgba(255, 251, 253, 0.92);
+      border: 1px solid var(--line-strong);
+      border-radius: 22px;
+      color: #b89aaf;
+      font-size: 15px;
+    }
+
+    .voice {
+      background:
+        radial-gradient(460px 340px at 50% 36%, #ffe0f0 0%, transparent 68%),
+        radial-gradient(280px 220px at 50% 40%, #f6e4fb 0%, transparent 70%),
+        var(--paper);
+    }
+    .voice-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px;
+    }
+    .voice-top span { color: var(--muted); font-size: 13px; }
+    .voice-stage {
+      display: grid;
+      flex: 1;
+      align-content: center;
+      justify-items: center;
+      text-align: center;
+    }
+    .orb-wrap {
+      display: grid;
+      place-items: center;
+      width: 220px;
+      height: 220px;
+    }
+    .ring {
+      grid-area: 1 / 1;
+      border: 1px solid rgba(180, 61, 120, 0.22);
+      border-radius: 999px;
+    }
+    .ring.a { width: 220px; height: 220px; }
+    .ring.b { width: 176px; height: 176px; }
+    .ring.c { width: 136px; height: 136px; background: rgba(253, 232, 243, 0.72); }
+    .orb {
+      grid-area: 1 / 1;
+      display: grid;
+      width: 104px;
+      height: 104px;
+      place-items: center;
+      background: radial-gradient(circle at 32% 28%, #fff5fb, #f7b6d4 40%, #b43d78 100%);
+      border-radius: 999px;
+      color: #fff7fb;
+      font-size: 36px;
+      font-weight: 680;
+      box-shadow: 0 16px 40px rgba(180, 61, 120, 0.28);
+    }
+    .voice-stage h2 {
+      margin: 18px 0 0;
+      font-size: 32px;
+      font-weight: 640;
+      letter-spacing: -0.04em;
+    }
+    .voice-stage .state {
+      margin: 6px 0 0;
+      color: var(--rose);
+      font-size: 14px;
+      font-weight: 650;
+    }
+    .caption {
+      margin: 22px 28px 0;
+      color: var(--soft);
+      font-size: 16px;
+      line-height: 1.5;
+    }
+    .voice-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      padding: 8px 0 28px;
+    }
+    .vbtn {
+      display: grid;
+      gap: 6px;
+      justify-items: center;
+      width: 72px;
+      border: 0;
+      background: transparent;
+      color: var(--soft);
+      font: inherit;
+      font-size: 12px;
+    }
+    .vbtn i {
+      display: grid;
+      width: 56px;
+      height: 56px;
+      place-items: center;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-style: normal;
+    }
+    .vbtn.end i {
+      width: 72px;
+      height: 72px;
+      background: linear-gradient(180deg, #e25b8a, #b4235c);
+      border-color: transparent;
+      color: white;
+    }
+    .sheet {
+      margin: 0 16px 18px;
+      padding: 14px 16px;
+      background: rgba(255, 251, 253, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+    .sheet small { color: var(--muted); font-size: 12px; }
+    .sheet p { margin: 4px 0 0; font-size: 15px; }
+
+    .mem-head h2 {
+      margin: 8px 0 0;
+      font-size: 32px;
+      font-weight: 640;
+      letter-spacing: -0.04em;
+    }
+    .mem-head p {
+      margin: 8px 0 0;
+      color: var(--soft);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .mem-scroll {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .group {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+    }
+    .card {
+      margin-top: 8px;
+      padding: 14px 14px 12px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+    .card h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 620;
+      line-height: 1.4;
+    }
+    .tag {
+      display: inline-block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .tag.warn { color: var(--caution); }
+    .card.said { border-left: 3px solid #e25b9a; }
+    .card.noticed { border-left: 3px solid #d7a0c4; }
+    .card.hers { border-left: 3px solid var(--lilac); }
+    .card .hint {
+      margin: 6px 0 0;
+      color: var(--soft);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .card-actions {
+      display: flex;
+      gap: 14px;
+      margin-top: 10px;
+    }
+    .card-actions button {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--rose);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 620;
+    }
+    .card-actions button.quiet { color: var(--muted); font-weight: 550; }
+
+    .swatches {
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      margin-top: 36px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .swatch {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .swatch i {
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      border: 1px solid rgba(28, 25, 23, 0.08);
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <header class="mast">
+      <div>
+        <p class="eyebrow">AI Companion · Mobile</p>
+        <h1>移动端界面草案</h1>
+        <p class="deck">雾粉底、玫紫点。界面里只有一个陪伴者，连续相处，记忆写明来源，不放关系数值。</p>
+      </div>
+      <div class="principles">
+        <span>一个人，一直在</span>
+        <span>安静也是回应</span>
+        <span>记忆写明来源</span>
+        <span>不显示关系数值</span>
+      </div>
+    </header>
+
+    <div class="row">
+      <figure class="shot">
+        <div class="device">
+          <div class="screen">
+            <div class="status">
+              <span>16:08</span>
+              <span class="island"></span>
+              <span class="right"><span class="sig"></span></span>
+            </div>
+            <div class="body">
+              <div class="home-top">
+                <div>
+                  <p class="kicker">今天</p>
+                  <h2 class="name">阳</h2>
+                </div>
+                <div class="mark" aria-hidden="true">阳</div>
+              </div>
+              <p class="presence"><span class="dot"></span>在</p>
+
+              <article class="note">
+                <p class="who">她先开口</p>
+                <blockquote>窗帘拉开一点吧，光进来人清醒得快些。</blockquote>
+                <p class="when">上午 · 还没回</p>
+              </article>
+
+              <div class="actions">
+                <button class="btn primary" type="button">继续说</button>
+                <button class="btn ghost" type="button">听她说</button>
+              </div>
+
+              <p class="section-label">今天经过</p>
+              <ul class="day">
+                <li>水龙头那一声，你顺手关掉了<small>她接住了这件事</small></li>
+                <li>硬面包边还是吃了<small>她注意到，还没当成定论</small></li>
+                <li>早饭翻篇了<small>你说不聊了，她停在这里</small></li>
+              </ul>
+            </div>
+            <nav class="tabs" aria-label="主导航">
+              <button class="on" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z"/></svg>
+                在一起
+              </button>
+              <button type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 6h14v9H8l-3 3V6Z"/></svg>
+                说话
+              </button>
+              <button type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 4h8a2 2 0 0 1 2 2v14l-6-3-6 3V6a2 2 0 0 1 2-2Z"/></svg>
+                记得
+              </button>
+            </nav>
+          </div>
+        </div>
+        <figcaption>
+          <strong>在一起</strong>
+          <em>打开就是这个人，不是收件箱。她可以先开口，你也可以先不回。</em>
+        </figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="device">
+          <div class="screen">
+            <div class="status">
+              <span>16:08</span>
+              <span class="island"></span>
+              <span class="right"><span class="sig"></span></span>
+            </div>
+            <div class="body">
+              <header class="chat-head">
+                <button class="icon-btn" type="button" aria-label="返回">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 5 8 12l7 7"/></svg>
+                </button>
+                <div class="mini-mark" aria-hidden="true">阳</div>
+                <div class="who">
+                  <h2>阳</h2>
+                  <p>在</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="改成语音">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4a3 3 0 0 1 3 3v4a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3"/></svg>
+                </button>
+              </header>
+              <div class="thread">
+                <div class="stamp">上午</div>
+                <div class="bubble her">窗帘拉开一点吧，光进来人清醒得快些。</div>
+                <div class="bubble her">今天想先从哪件事开始？</div>
+                <div class="bubble me">水龙头又滴了一声，我伸手关掉了。</div>
+                <div class="bubble her">滴的一声被你抓住了。顺手关掉，人也醒透了吧。</div>
+                <div class="bubble me">你别劝我扔。</div>
+                <div class="bubble her">没打算劝你扔。这点我说清楚了就行。</div>
+              </div>
+              <div class="composer">
+                <button class="round" type="button" aria-label="按住说">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4a3 3 0 0 1 3 3v4a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3"/></svg>
+                </button>
+                <div class="field">想说的话</div>
+                <button class="round send" type="button" aria-label="发送">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <strong>说话</strong>
+          <em>她的话在左，你的话在右。可以不同意，你说停她就停。输入条只留文字和语音。</em>
+        </figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="device">
+          <div class="screen voice">
+            <div class="status">
+              <span>16:09</span>
+              <span class="island"></span>
+              <span class="right"><span class="sig"></span></span>
+            </div>
+            <div class="body">
+              <div class="voice-top">
+                <button class="icon-btn" type="button" aria-label="收成文字">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 6h12M6 12h12M6 18h8"/></svg>
+                </button>
+                <span>语音</span>
+                <span style="width:36px"></span>
+              </div>
+              <div class="voice-stage">
+                <div class="orb-wrap">
+                  <span class="ring a"></span>
+                  <span class="ring b"></span>
+                  <span class="ring c"></span>
+                  <div class="orb">阳</div>
+                </div>
+                <h2>阳</h2>
+                <p class="state">在听</p>
+                <p class="caption">“开头稳了。”</p>
+              </div>
+              <div class="sheet">
+                <small>你刚才说</small>
+                <p>水龙头又滴了一声，我伸手关掉了。</p>
+              </div>
+              <div class="voice-controls">
+                <button class="vbtn" type="button"><i>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>
+                </i>静音</button>
+                <button class="vbtn end" type="button"><i>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7.2 5.4 5.4 7.2c2.8 3.6 6.6 6.2 10.8 7.2l1.6-2.2 4.2 1.2v4.4c0 .8-.7 1.5-1.5 1.4C10.8 18.2 4.6 12 3.8 3.5 3.7 2.7 4.4 2 5.2 2H9.6L10.8 6.2 8.6 7.8"/></svg>
+                </i>结束</button>
+                <button class="vbtn" type="button"><i>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 6h14v9H8l-3 3V6Z"/></svg>
+                </i>文字</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <strong>听她说</strong>
+          <em>语音是同一段关系的另一种说法，底下留着刚才的话，结束就能回到文字。</em>
+        </figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="device">
+          <div class="screen">
+            <div class="status">
+              <span>16:08</span>
+              <span class="island"></span>
+              <span class="right"><span class="sig"></span></span>
+            </div>
+            <div class="body">
+              <header class="mem-head">
+                <p class="kicker">阳留着的</p>
+                <h2>记得</h2>
+                <p>你可以说哪句记错了，也可以让她忘掉。她自己的判断会标明，不会写成你说过的话。</p>
+              </header>
+              <div class="mem-scroll">
+                <p class="group">你明确说过</p>
+                <article class="card said">
+                  <h3>不要劝我把剩下的扔掉</h3>
+                  <span class="tag">你说过 · 今天</span>
+                  <div class="card-actions">
+                    <button type="button">改一下</button>
+                    <button class="quiet" type="button">忘掉</button>
+                  </div>
+                </article>
+
+                <p class="group">她注意到的</p>
+                <article class="card noticed">
+                  <h3>硬的也照吃，不怎么挑</h3>
+                  <span class="tag warn">注意到的 · 只出现过一次</span>
+                  <p class="hint">这是她的观察，还不是你的结论。</p>
+                  <div class="card-actions">
+                    <button type="button">说得不对</button>
+                    <button class="quiet" type="button">忘掉</button>
+                  </div>
+                </article>
+
+                <p class="group">她自己在意的</p>
+                <article class="card hers">
+                  <h3>一个人怎么把一件事说给别人听</h3>
+                  <span class="tag">她的兴趣 · 不是你的档案</span>
+                </article>
+              </div>
+            </div>
+            <nav class="tabs" aria-label="主导航">
+              <button type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z"/></svg>
+                在一起
+              </button>
+              <button type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 6h14v9H8l-3 3V6Z"/></svg>
+                说话
+              </button>
+              <button class="on" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 4h8a2 2 0 0 1 2 2v14l-6-3-6 3V6a2 2 0 0 1 2-2Z"/></svg>
+                记得
+              </button>
+            </nav>
+          </div>
+        </div>
+        <figcaption>
+          <strong>记得</strong>
+          <em>三层分开：你说过的、她观察到的、她自己的兴趣。没有置信度分数，也没有亲密度。</em>
+        </figcaption>
+      </figure>
+    </div>
+
+    <div class="swatches">
+      <span class="swatch"><i style="background:#f8f1f6"></i>雾粉</span>
+      <span class="swatch"><i style="background:#fffbfd"></i>卡片</span>
+      <span class="swatch"><i style="background:#fde8f3"></i>你的话</span>
+      <span class="swatch"><i style="background:#b43d78"></i>玫紫</span>
+      <span class="swatch"><i style="background:#2c1b2a"></i>字色</span>
+      <span>示例人物是阳。换陪伴者只换名字和开口的那句话。</span>
+    </div>
+  </main>
+</body>
+</html>

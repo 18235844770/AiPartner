@@ -1,10 +1,8 @@
-import { computed, ref, watch } from "vue";
+import { computed, onScopeDispose, ref, watch } from "vue";
 
-import { compareConversations } from "../domain/presentation";
 import {
-  archiveConversation,
+  clearMessages,
   createConversation,
-  listConversations,
   listMessages,
   type ConversationResponse,
   type ConversationScope,
@@ -24,23 +22,19 @@ export function useChat(getScope: () => ConversationScope | null, hooks: ChatHoo
   const selectedId = ref<string | null>(null);
   const loadingList = ref(false);
   const loadingMessages = ref(false);
-  const creating = ref(false);
+  const clearing = ref(false);
   const sending = ref(false);
   const error = ref("");
   let scopeGeneration = 0;
   let messageLoad = 0;
   let turnAbort: AbortController | null = null;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
 
   const selected = computed(
     () => conversations.value.find((item) => item.id === selectedId.value) ?? null,
   );
 
-  function replaceConversation(conversation: ConversationResponse): void {
-    const remaining = conversations.value.filter((item) => item.id !== conversation.id);
-    conversations.value = [...remaining, conversation].sort(compareConversations);
-  }
-
-  async function refreshConversations(selectLatest: boolean): Promise<void> {
+  async function ensureThread(): Promise<void> {
     const scope = getScope();
     if (!scope) {
       return;
@@ -49,21 +43,12 @@ export function useChat(getScope: () => ConversationScope | null, hooks: ChatHoo
     loadingList.value = true;
     error.value = "";
     try {
-      const items = await listConversations(scope);
+      const conversation = await createConversation(scope, { title: null });
       if (generation !== scopeGeneration) {
         return;
       }
-      conversations.value = [...items].sort(compareConversations);
-      if (selectedId.value && !conversations.value.some((item) => item.id === selectedId.value)) {
-        selectedId.value = null;
-        messages.value = [];
-      }
-      if (selectLatest && !selectedId.value) {
-        const latest = conversations.value[0];
-        if (latest) {
-          await openConversation(latest.id);
-        }
-      }
+      conversations.value = [conversation];
+      await openConversation(conversation.id);
     } catch (caught) {
       if (generation === scopeGeneration) {
         error.value = errorText(caught);
@@ -100,33 +85,6 @@ export function useChat(getScope: () => ConversationScope | null, hooks: ChatHoo
     } finally {
       if (generation === scopeGeneration && load === messageLoad) {
         loadingMessages.value = false;
-      }
-    }
-  }
-
-  async function startConversation(title: string): Promise<void> {
-    const scope = getScope();
-    if (!scope) {
-      return;
-    }
-    const trimmed = title.trim();
-    const generation = scopeGeneration;
-    creating.value = true;
-    error.value = "";
-    try {
-      const created = await createConversation(scope, { title: trimmed || null });
-      if (generation !== scopeGeneration) {
-        return;
-      }
-      replaceConversation(created);
-      await openConversation(created.id);
-    } catch (caught) {
-      if (generation === scopeGeneration) {
-        error.value = errorText(caught);
-      }
-    } finally {
-      if (generation === scopeGeneration) {
-        creating.value = false;
       }
     }
   }
@@ -275,18 +233,80 @@ export function useChat(getScope: () => ConversationScope | null, hooks: ChatHoo
     ];
   }
 
-  async function archiveSelected(): Promise<void> {
+  async function refreshOpenThread(): Promise<void> {
     const scope = getScope();
-    const conversation = selected.value;
-    if (!scope || !conversation || conversation.status === "archived") {
+    const conversationId = selectedId.value;
+    if (!scope || !conversationId || sending.value || loadingMessages.value) {
       return;
     }
+    const generation = scopeGeneration;
+    const load = messageLoad;
+    try {
+      const items = await listMessages(scope, conversationId);
+      if (
+        generation !== scopeGeneration ||
+        load !== messageLoad ||
+        selectedId.value !== conversationId ||
+        sending.value
+      ) {
+        return;
+      }
+      messages.value = items;
+    } catch {
+      // 下一轮再拉。人离开界面时保留当前记录。
+    }
+  }
+
+  function stopPolling(): void {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function startPolling(): void {
+    stopPolling();
+    pollTimer = setInterval(() => {
+      void refreshOpenThread();
+    }, 20_000);
+  }
+
+  function onVisible(): void {
+    if (document.visibilityState === "visible") {
+      void refreshOpenThread();
+    }
+  }
+
+  document.addEventListener("visibilitychange", onVisible);
+  onScopeDispose(() => {
+    stopPolling();
+    document.removeEventListener("visibilitychange", onVisible);
+  });
+
+  async function clearHistory(): Promise<void> {
+    const scope = getScope();
+    const conversation = selected.value;
+    if (!scope || !conversation || clearing.value || sending.value) {
+      return;
+    }
+    const generation = scopeGeneration;
+    clearing.value = true;
     error.value = "";
     try {
-      const archived = await archiveConversation(scope, conversation.id);
-      replaceConversation(archived);
+      await clearMessages(scope, conversation.id);
+      if (generation !== scopeGeneration) {
+        return;
+      }
+      messages.value = [];
+      await openConversation(conversation.id);
     } catch (caught) {
-      error.value = errorText(caught);
+      if (generation === scopeGeneration) {
+        error.value = errorText(caught);
+      }
+    } finally {
+      if (generation === scopeGeneration) {
+        clearing.value = false;
+      }
     }
   }
 
@@ -301,14 +321,16 @@ export function useChat(getScope: () => ConversationScope | null, hooks: ChatHoo
       turnAbort = null;
       loadingList.value = false;
       loadingMessages.value = false;
-      creating.value = false;
+      clearing.value = false;
       sending.value = false;
       conversations.value = [];
       messages.value = [];
       selectedId.value = null;
       error.value = "";
+      stopPolling();
       if (key) {
-        void refreshConversations(true);
+        startPolling();
+        void ensureThread();
       }
     },
     { immediate: true },
@@ -320,15 +342,12 @@ export function useChat(getScope: () => ConversationScope | null, hooks: ChatHoo
     selected,
     loadingList,
     loadingMessages,
-    creating,
+    clearing,
     sending,
     error,
-    openConversation,
-    startConversation,
     sendMessage,
     stop,
-    archiveSelected,
-    refreshConversations,
+    clearHistory,
   };
 }
 

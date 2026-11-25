@@ -18,8 +18,10 @@ from app.modules.dialogue.domain.proactive import (
     ProactiveMessage,
     attachment_silence_block,
     frequency_block,
+    schedule_bucket,
+    speak_when_user_is_absent,
 )
-from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion, SelfMotivation, UserNeed
+from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion, SelfMotivation, UserNeed, proactive_fallback
 from app.modules.dialogue.services.proactive import ProactiveCheckService
 from app.modules.dialogue.services.turn_service import DialogueTurnService
 from app.modules.infrastructure.api.schemas import CreateBackgroundTaskRequest
@@ -39,10 +41,25 @@ def test_frequency_blocks_a_burst_and_a_fresh_user_message() -> None:
     assert frequency_block([ProactiveMessage("companion", now - MIN_PROACTIVE_GAP)], now) is None
     assert (
         frequency_block(
-            [companion, ProactiveMessage("companion", now - timedelta(hours=3))],
+            [
+                ProactiveMessage("companion", now - timedelta(minutes=90)),
+                ProactiveMessage("companion", now - timedelta(minutes=70)),
+                ProactiveMessage("companion", now - timedelta(minutes=50)),
+                ProactiveMessage("companion", now - timedelta(minutes=30)),
+            ],
             now,
         )
         == "unanswered_limit"
+    )
+    assert (
+        frequency_block(
+            [
+                ProactiveMessage("companion", now - timedelta(minutes=30)),
+                ProactiveMessage("companion", now - timedelta(minutes=30) + timedelta(seconds=20)),
+            ],
+            now,
+        )
+        is None
     )
     assert frequency_block([ProactiveMessage("user", now - timedelta(minutes=1))], now) == "awaiting_reply"
     assert frequency_block([ProactiveMessage("user", now - USER_TURN_GRACE)], now) is None
@@ -50,7 +67,7 @@ def test_frequency_blocks_a_burst_and_a_fresh_user_message() -> None:
     assert frequency_block([], now, "quiet") == "energy_quiet"
     assert frequency_block([ProactiveMessage("companion", now - MIN_PROACTIVE_GAP)], now, "low") == "too_recent"
     assert frequency_block([ProactiveMessage("companion", now - LOW_ENERGY_PROACTIVE_GAP)], now, "low") is None
-    recent_user = [ProactiveMessage("user", now - timedelta(hours=4))]
+    recent_user = [ProactiveMessage("user", now - timedelta(minutes=20))]
     assert (
         attachment_silence_block(
             recent_user,
@@ -69,6 +86,15 @@ def test_frequency_blocks_a_burst_and_a_fresh_user_message() -> None:
     )
     assert attachment_silence_block([], now, ProactiveAttachmentCue(closeness_desire=0.9)) is None
     assert HIGH_DESIRE_USER_SILENCE < timedelta(hours=6)
+    spoken, gate = speak_when_user_is_absent(proactive_fallback())
+    assert spoken.should_send is True
+    assert spoken.primary_action == DialogueAction.SHARE
+    assert gate["proactive_gate"] == "speak_while_absent"
+    kept, accepted = speak_when_user_is_absent(_share())
+    assert kept.primary_action == DialogueAction.SHARE
+    assert accepted["proactive_gate"] == "accepted"
+    assert schedule_bucket(now) != schedule_bucket(now + timedelta(minutes=5))
+    assert schedule_bucket(now) == schedule_bucket(now + timedelta(minutes=4))
 
 
 async def test_proactive_handler_rejects_a_bad_payload() -> None:
@@ -320,6 +346,8 @@ async def test_hourly_schedule_keeps_one_check_for_an_active_companion(database_
     await service.schedule_due(now=moment, limit=1000)
     await service.schedule_due(now=moment, limit=1000)
     assert await _check_count(active_id) == 1
+    await service.schedule_due(now=moment + timedelta(minutes=5), limit=1000)
+    assert await _check_count(active_id) == 2
     assert await _check_count(archived_id) == 0
 
 

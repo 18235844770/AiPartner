@@ -78,6 +78,27 @@ class MemoryContextService:
         logger.info("saved working memory %s for conversation %s", saved.id, conversation_id)
         return saved
 
+    async def detach_chat_log(
+        self,
+        session: AsyncSession,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        message_ids: list[uuid.UUID],
+    ) -> None:
+        """去掉聊天记录上的来源引用，并清空这份会话的工作记忆。长期记忆正文留下。"""
+        await self._memories.delete_sources_for_messages(session, message_ids)
+        row = await self._contexts.lock_working(session, conversation_id)
+        if row is None or row.companion_id != companion_id:
+            return
+        row.summary = None
+        row.current_topic = None
+        row.attention_topic_id = None
+        row.open_threads = []
+        row.archived_at = None
+        row.version += 1
+        row.updated_at = datetime.now(UTC)
+        await session.flush()
+
     async def record_topic_transition(
         self,
         session: AsyncSession,

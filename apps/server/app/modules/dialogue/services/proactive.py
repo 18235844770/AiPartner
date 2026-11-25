@@ -15,6 +15,7 @@ from app.modules.dialogue.domain.proactive import (
     ProactiveMessage,
     attachment_silence_block,
     frequency_block,
+    schedule_bucket,
 )
 from app.modules.dialogue.services.turn_service import DialogueTurnService
 from app.modules.identity.services.identity_service import IdentityService
@@ -69,7 +70,7 @@ class ProactiveCheckService:
 
     async def schedule_due(self, *, now: datetime | None = None, limit: int = _SCHEDULE_LIMIT) -> int:
         moment = now or datetime.now(UTC)
-        bucket = moment.strftime("%Y%m%d%H")
+        bucket = schedule_bucket(moment)
         async with self._session_factory() as session:
             async with session.begin():
                 targets = await self._states.list_active_owners(session, limit)
@@ -116,8 +117,10 @@ class ProactiveCheckService:
         conversations = await self._conversations.list_conversations(session, user_id, companion_id)
         conversation = _latest_active(conversations)
         if conversation is None:
-            return {"checked": True, "sent": False, "reason": "no_conversation"}
-        messages = await self._conversations.list_messages(session, user_id, companion_id, conversation.id)
+            conversation_id = await self._ensure_thread(user_id, companion_id)
+        else:
+            conversation_id = conversation.id
+        messages = await self._conversations.list_messages(session, user_id, companion_id, conversation_id)
         visible = [
             ProactiveMessage(sender_type=item.sender_type, created_at=item.created_at)
             for item in messages
@@ -139,7 +142,7 @@ class ProactiveCheckService:
             return {"checked": True, "sent": False, "reason": attachment_blocked}
         # 主动回合必须在独立会话中执行：调用方（如 TaskExecutor）若包着长事务，
         # 决策的 begin() 只会变成 savepoint，模型日志侧看不到未提交的 decision。
-        return await self._run_proactive_turn(user_id, companion_id, conversation.id)
+        return await self._run_proactive_turn(user_id, companion_id, conversation_id)
 
     async def _run_proactive_turn(
         self,
@@ -164,6 +167,18 @@ class ProactiveCheckService:
                     sent = False
         logger.info("proactive check for companion %s outcome %s", companion_id, outcome)
         return {"checked": True, "sent": sent, "outcome": outcome}
+
+    async def _ensure_thread(self, user_id: uuid.UUID, companion_id: uuid.UUID) -> uuid.UUID:
+        from app.modules.conversation.api.schemas import CreateConversationRequest
+
+        async with self._session_factory() as extra:
+            result = await self._conversations.create_conversation(
+                extra,
+                user_id,
+                companion_id,
+                CreateConversationRequest(),
+            )
+            return result.conversation.id
 
 
 def _latest_active(conversations: list[Conversation]) -> Conversation | None:

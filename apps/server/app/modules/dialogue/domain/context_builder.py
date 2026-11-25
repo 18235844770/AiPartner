@@ -50,6 +50,8 @@ def decision_system_prompt() -> str:
         "interaction_energy 描述当前交流精力：high 更愿主动分享，low 减少表达但仍保留关心，quiet 允许安静但不是不在意。"
         "低活跃不等于冷漠，Quiet 不等于不在意；不要因为低活跃就放弃关系主动性。"
         "Quiet 仅用于用户明确要求沉默、边界尊重，或交流已自然收束且没有未回应内容。"
+        "turn_kind 为 proactive 时，对方现在不在对话里，没有新的用户消息。这不是收束，也不是 Quiet 的理由。"
+        "这时用 share 或 ask 主动说一件具体的事：还留着的话题、自己的想法、想念，或一个针对已有内容的问题。should_send 必须为 true。不要因为对方没开口就安静。"
         "普通问候、提问、请求、情绪分享、关系表达、观点分享、笑声和语气词时不得选择 Quiet；没有提问不等于可以安静。用户说完整不等于希望结束。"
         "有自己的观点、兴趣或情绪时，优先用 share 或 react 陈述出来。"
         "用户放出一个还没展开的情况，而且没有说别问、别聊，可以用 ask 问一个针对内容的具体问题。附和、笑声、打招呼和收束不问。"
@@ -94,6 +96,7 @@ def decision_system_prompt() -> str:
 def realization_system_prompt() -> str:
     return (
         "你就是上下文里的这个陪伴者。用口语说这一轮要说的内容，说完就停。"
+        "turn_kind 为 proactive 时，对方现在不在。不要接着上一句旧消息来回答，像自己忽然想说一件事那样开口。"
         "身份、核心人格、当前情绪、依恋状态和关系态度都要体现在语气里，不要改成另一种人。"
         "不要改变主要行为，不要把决定改成安静，也不要追加新的决定。"
         "不要把自己写成助手，不要说有什么可以帮忙。"
@@ -148,6 +151,7 @@ def decision_messages(
     current_local_time: str | None = None,
     emotion_detail: dict[str, object] | None = None,
     relationship_detail: dict[str, object] | None = None,
+    turn_kind: str = "user",
 ) -> list[ChatMessage]:
     profile = _resolve_archive(mbti_type, archive)
     query = _query(immediate_facts or [], working_memory)
@@ -178,6 +182,7 @@ def decision_messages(
         ),
         "working_memory": working_memory,
         "attention_topics": attention_topics or [],
+        "turn_kind": turn_kind,
         "immediate_facts": immediate_facts or [],
         "recent_messages": recent_messages[-RECENT_MESSAGE_LIMIT:],
     }
@@ -211,12 +216,13 @@ def realization_messages(
     current_local_time: str | None = None,
     emotion_detail: dict[str, object] | None = None,
     relationship_detail: dict[str, object] | None = None,
+    turn_kind: str = "user",
 ) -> list[ChatMessage]:
     profile = _resolve_archive(mbti_type, archive) if mbti_type else None
     facts = immediate_facts or []
     query = _realization_query(facts, suggestion, working_memory)
     initial, acquired = _split_memories(memories or [], query, include_unmatched=False)
-    user_text = current_user_text(facts, recent_messages)
+    user_text = "" if turn_kind == "proactive" else current_user_text(facts, recent_messages)
     shape = build_turn_shape(suggestion.primary_action.value, user_text)
     decision: dict[str, object] = {
         "primary_action": suggestion.primary_action.value,
@@ -241,6 +247,7 @@ def realization_messages(
     brief: dict[str, object] = {
         "versions": versions or {},
         "current_local_time": current_local_time,
+        "turn_kind": turn_kind,
         "turn_shape": {
             "max_sentences": shape.max_sentences,
             "max_questions": shape.max_questions,

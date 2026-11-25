@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.identity.domain.enums import CompanionStatus
@@ -48,3 +48,22 @@ class StateRepository:
             .limit(limit)
         )
         return [(row[0], row[1]) for row in (await session.execute(statement)).all()]
+
+    async def release_chat_references(
+        self,
+        session: AsyncSession,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        message_ids: list[uuid.UUID],
+        decision_ids: list[uuid.UUID],
+    ) -> None:
+        conditions = [StateEvent.conversation_id == conversation_id]
+        if message_ids:
+            conditions.append(StateEvent.message_id.in_(message_ids))
+        if decision_ids:
+            conditions.append(StateEvent.dialogue_decision_id.in_(decision_ids))
+        await session.execute(
+            update(StateEvent)
+            .where(StateEvent.companion_id == companion_id, or_(*conditions))
+            .values(message_id=None, dialogue_decision_id=None)
+        )

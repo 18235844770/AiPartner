@@ -517,6 +517,22 @@ class DialogueService:
         if not current.proactive_allowed or current.mode not in _PROACTIVE_MODES:
             raise AppError("当前不允许主动交流")
 
+    async def decision_ids_for_conversation(
+        self,
+        session: AsyncSession,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> list[uuid.UUID]:
+        return await self._decisions.ids_for_conversation(session, companion_id, conversation_id)
+
+    async def discard_conversation_decisions(
+        self,
+        session: AsyncSession,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        await self._decisions.delete_for_conversation(session, companion_id, conversation_id)
+
 
 def to_decision_response(decision: DialogueDecision) -> DecisionResponse:
     return DecisionResponse(

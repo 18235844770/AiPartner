@@ -34,6 +34,7 @@ from app.modules.dialogue.domain.speech_turn import (
     speech_repair_message,
 )
 from app.modules.dialogue.domain.enums import DecisionStatus, DialogueAction, TriggerType
+from app.modules.dialogue.domain.proactive import speak_when_user_is_absent
 from app.modules.dialogue.domain.quiet_policy import align_user_closing, apply_quiet_gate
 from app.modules.dialogue.domain.suggestion import (
     FALLBACK_USER_TEXT,
@@ -108,6 +109,7 @@ class TurnContext:
     emotion_detail: dict[str, object] | None = None
     relationship_detail: dict[str, object] | None = None
     consecutive_quiet_turns: int = 0
+    turn_kind: str = "user"
 
     def decision_input(self, repair: bool) -> list[ChatMessage]:
         return decision_messages(
@@ -131,6 +133,7 @@ class TurnContext:
             current_local_time=self.current_local_time,
             emotion_detail=self.emotion_detail,
             relationship_detail=self.relationship_detail,
+            turn_kind=self.turn_kind,
         )
 
     def realization_input(self, suggestion: ModelDecisionSuggestion) -> list[ChatMessage]:
@@ -154,6 +157,7 @@ class TurnContext:
             current_local_time=self.current_local_time,
             emotion_detail=self.emotion_detail,
             relationship_detail=self.relationship_detail,
+            turn_kind=self.turn_kind,
         )
 
 
@@ -708,7 +712,13 @@ class DialogueTurnService:
                 settled = True
                 yield TurnCompleted(turn_id=turn_id, outcome="quiet", sequence=sequence.next())
                 return
-            context = await self._context(session, user_id, companion_id, conversation_id)
+            context = await self._context(
+                session,
+                user_id,
+                companion_id,
+                conversation_id,
+                turn_kind="proactive",
+            )
             scope = ModelCallScope(
                 trace_id=trace_id,
                 user_id=user_id,
@@ -717,6 +727,9 @@ class DialogueTurnService:
                 context_versions=context.versions or {},
             )
             suggestion, validation = await self._choose(context, scope, proactive_fallback)
+            if validation.get("accepted") and not validation.get("fallback"):
+                suggestion, gate = speak_when_user_is_absent(suggestion)
+                validation = {**validation, **gate}
             action, should_send = final_send(suggestion)
             if should_send and conversation_id is None:
                 action = DialogueAction.QUIET
@@ -886,6 +899,7 @@ class DialogueTurnService:
         companion_id: uuid.UUID,
         conversation_id: uuid.UUID | None,
         current_message: str | None = None,
+        turn_kind: str = "user",
     ) -> TurnContext:
         _profile, version = await self._personas.get_current(session, user_id, companion_id)
         state = await self._states.get_current(session, user_id, companion_id)
@@ -946,6 +960,7 @@ class DialogueTurnService:
                 "exclusivity_need": relationship.exclusivity_need,
             },
             consecutive_quiet_turns=interaction.consecutive_quiet_turns,
+            turn_kind=turn_kind,
         )
 
     async def _choose(

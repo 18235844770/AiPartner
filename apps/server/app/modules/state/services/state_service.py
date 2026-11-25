@@ -231,6 +231,22 @@ class StateService:
             changes[name] = {"before": before, "after": after}
         return changes
 
+    async def release_chat_references(
+        self,
+        session: AsyncSession,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        message_ids: list[uuid.UUID],
+        decision_ids: list[uuid.UUID],
+    ) -> None:
+        await self._states.release_chat_references(
+            session,
+            companion_id,
+            conversation_id,
+            message_ids,
+            decision_ids,
+        )
+
 
 def to_state_response(state: CompanionState) -> StateResponse:
     return StateResponse(

@@ -9,52 +9,50 @@ export type PythonServiceStatus = {
 };
 
 export class PythonServiceManager {
-  private child: ChildProcess | null = null;
+  private api: ChildProcess | null = null;
+  private worker: ChildProcess | null = null;
+  private stopping = false;
   private state: PythonServiceStatus["state"] = "starting";
   private detail = "正在启动 Python 服务";
+  private workerDetail = "";
+  private serverRoot = "";
 
   constructor(private readonly port: number) {}
 
   status(): PythonServiceStatus {
+    const detail = this.workerDetail ? `${this.detail}；${this.workerDetail}` : this.detail;
     return {
       state: this.state,
-      detail: this.detail,
+      detail,
       apiBaseUrl: `http://127.0.0.1:${this.port}`,
     };
   }
 
   start(): void {
-    const serverRoot = path.resolve(__dirname, "../../../server");
-    if (!fs.existsSync(path.join(serverRoot, "pyproject.toml"))) {
+    this.stopping = false;
+    this.serverRoot = path.resolve(__dirname, "../../../server");
+    if (!fs.existsSync(path.join(this.serverRoot, "pyproject.toml"))) {
       this.state = "failed";
-      this.detail = `找不到 Python 服务目录 ${serverRoot}`;
+      this.detail = `找不到 Python 服务目录 ${this.serverRoot}`;
       return;
     }
-    this.child = spawn(
-      resolveUv(),
+    this.api = this.spawnProcess(
       ["run", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(this.port)],
       {
-        cwd: serverRoot,
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
-        windowsHide: true,
+        onError: (error) => {
+          this.state = "failed";
+          this.detail = error.message;
+        },
+        onExit: (code) => {
+          if (this.stopping || this.state !== "running") {
+            return;
+          }
+          this.state = "failed";
+          this.detail = `Python 服务已退出，代码 ${code ?? "unknown"}`;
+        },
       },
     );
-    this.child.stdout?.on("data", (chunk: Buffer) => {
-      console.log(chunk.toString());
-    });
-    this.child.stderr?.on("data", (chunk: Buffer) => {
-      console.error(chunk.toString());
-    });
-    this.child.on("error", (error) => {
-      this.state = "failed";
-      this.detail = error.message;
-    });
-    this.child.on("exit", (code) => {
-      if (this.state === "running") {
-        this.state = "failed";
-        this.detail = `Python 服务已退出，代码 ${code ?? "unknown"}`;
-      }
-    });
+    this.startWorker();
     void this.waitUntilHealthy();
   }
 
@@ -79,7 +77,56 @@ export class PythonServiceManager {
   }
 
   stop(): void {
-    const pid = this.child?.pid;
+    this.stopping = true;
+    this.kill(this.worker);
+    this.kill(this.api);
+    this.worker = null;
+    this.api = null;
+  }
+
+  private startWorker(): void {
+    if (this.stopping || !this.serverRoot) {
+      return;
+    }
+    this.workerDetail = "正在启动主动联系调度";
+    this.worker = this.spawnProcess(["run", "arq", "app.modules.infrastructure.worker.WorkerSettings"], {
+      onError: (error) => {
+        this.workerDetail = error.message;
+      },
+      onExit: (code) => {
+        this.worker = null;
+        if (this.stopping) {
+          return;
+        }
+        this.workerDetail = `主动联系调度已退出（${code ?? "unknown"}），稍后重试`;
+        setTimeout(() => this.startWorker(), 5000);
+      },
+    });
+    this.workerDetail = "主动联系调度已启动";
+  }
+
+  private spawnProcess(
+    args: string[],
+    hooks: { onError: (error: Error) => void; onExit: (code: number | null) => void },
+  ): ChildProcess {
+    const child = spawn(resolveUv(), args, {
+      cwd: this.serverRoot,
+      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+      windowsHide: true,
+    });
+    child.stdout?.on("data", (chunk: Buffer) => {
+      console.log(chunk.toString());
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      console.error(chunk.toString());
+    });
+    child.on("error", hooks.onError);
+    child.on("exit", hooks.onExit);
+    return child;
+  }
+
+  private kill(child: ChildProcess | null): void {
+    const pid = child?.pid;
     if (!pid) {
       return;
     }
@@ -87,7 +134,7 @@ export class PythonServiceManager {
       spawn("taskkill", ["/pid", String(pid), "/t", "/f"], { windowsHide: true });
       return;
     }
-    this.child?.kill();
+    child.kill();
   }
 }
 

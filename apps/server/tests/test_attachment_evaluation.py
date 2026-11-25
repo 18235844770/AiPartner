@@ -206,7 +206,7 @@ def test_proactive_silence_threshold_follows_attachment_readiness() -> None:
     assert high < medium < early
 
     now = datetime(2026, 11, 8, 12, tzinfo=UTC)
-    messages = [ProactiveMessage("user", now - timedelta(hours=4))]
+    messages = [ProactiveMessage("user", now - timedelta(minutes=20))]
     assert (
         attachment_silence_block(
             messages,

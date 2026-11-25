@@ -36,6 +36,11 @@ class MemoryRepository:
         await session.flush()
         return relation
 
+    async def delete_sources_for_messages(self, session: AsyncSession, message_ids: list[uuid.UUID]) -> None:
+        if not message_ids:
+            return
+        await session.execute(delete(MemorySource).where(MemorySource.message_id.in_(message_ids)))
+
     async def add_embedding(self, session: AsyncSession, embedding: MemoryEmbedding) -> MemoryEmbedding:
         session.add(embedding)
         await session.flush()

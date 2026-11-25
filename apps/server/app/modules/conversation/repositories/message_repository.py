@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.conversation.repositories.models import Conversation, Message
@@ -49,3 +49,7 @@ class MessageRepository:
             select(Message).where(Message.conversation_id == conversation_id).order_by(Message.sequence_number)
         )
         return list(result.all())
+
+    async def delete_for_conversation(self, session: AsyncSession, conversation_id: uuid.UUID) -> int:
+        result = await session.execute(delete(Message).where(Message.conversation_id == conversation_id))
+        return int(result.rowcount or 0)

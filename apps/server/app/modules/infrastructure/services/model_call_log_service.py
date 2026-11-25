@@ -189,6 +189,9 @@ class ModelCallLogService:
             if task.companion_id != data.companion_id:
                 raise AppError("任务不属于该陪伴者")
 
+    async def unlink_decisions(self, session: AsyncSession, decision_ids: list[uuid.UUID]) -> None:
+        await self._logs.unlink_decisions(session, decision_ids)
+
 
 def to_log_response(log: ModelCallLog) -> ModelCallLogResponse:
     return ModelCallLogResponse(

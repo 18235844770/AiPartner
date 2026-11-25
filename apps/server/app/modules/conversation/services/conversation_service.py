@@ -2,6 +2,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.conversation.api.schemas import CreateConversationRequest, CreateMessageRequest, MessageMetadata
@@ -27,6 +28,12 @@ class AppendMessageResult:
         self.created = created
 
 
+class EnsureConversationResult:
+    def __init__(self, conversation: Conversation, created: bool) -> None:
+        self.conversation = conversation
+        self.created = created
+
+
 class ConversationService:
     def __init__(
         self,
@@ -44,21 +51,101 @@ class ConversationService:
         user_id: uuid.UUID,
         companion_id: uuid.UUID,
         data: CreateConversationRequest,
-    ) -> Conversation:
+    ) -> EnsureConversationResult:
+        """一个陪伴者只有一条进行中的会话。已经有了就返回原来的那条。"""
+        if session.in_transaction():
+            return await self._ensure_conversation(session, user_id, companion_id, data.title)
+        try:
+            async with session.begin():
+                return await self._ensure_conversation(session, user_id, companion_id, data.title)
+        except IntegrityError:
+            async with session.begin():
+                existing = await self._conversations.get_active_for_companion(session, user_id, companion_id)
+                if existing is None:
+                    raise
+                return EnsureConversationResult(existing, created=False)
+
+    async def clear_messages(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> int:
+        """删掉这个窗口里的聊天记录，会话本身留下。长期记忆不删。"""
+        if session.in_transaction():
+            return await self._clear_messages(session, user_id, companion_id, conversation_id)
         async with session.begin():
-            await self._identity.get_owned_companion(session, user_id, companion_id)
-            conversation = await self._conversations.add(
-                session,
-                Conversation(
-                    user_id=user_id,
-                    companion_id=companion_id,
-                    title=data.title,
-                    status=ConversationStatus.ACTIVE.value,
-                    next_sequence_number=1,
-                ),
-            )
+            return await self._clear_messages(session, user_id, companion_id, conversation_id)
+
+    async def _ensure_conversation(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        title: str | None,
+    ) -> EnsureConversationResult:
+        await self._identity.get_owned_companion(session, user_id, companion_id)
+        existing = await self._conversations.get_active_for_companion(session, user_id, companion_id)
+        if existing is not None:
+            return EnsureConversationResult(existing, created=False)
+        conversation = await self._conversations.add(
+            session,
+            Conversation(
+                user_id=user_id,
+                companion_id=companion_id,
+                title=title,
+                status=ConversationStatus.ACTIVE.value,
+                next_sequence_number=1,
+            ),
+        )
         logger.info("created conversation %s", conversation.id)
-        return conversation
+        return EnsureConversationResult(conversation, created=True)
+
+    async def _clear_messages(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> int:
+        conversation = await self._require_conversation(
+            session,
+            user_id,
+            companion_id,
+            conversation_id,
+            for_update=True,
+        )
+        messages = await self._messages.list_for_conversation(session, conversation.id)
+        message_ids = [item.id for item in messages]
+        from app.modules.dialogue.services.dialogue_service import DialogueService
+        from app.modules.infrastructure.services.model_call_log_service import ModelCallLogService
+        from app.modules.memory.services.context_service import MemoryContextService
+        from app.modules.state.services.state_service import StateService
+
+        decision_ids = await DialogueService().decision_ids_for_conversation(
+            session,
+            companion_id,
+            conversation.id,
+        )
+        await ModelCallLogService().unlink_decisions(session, decision_ids)
+        await StateService().release_chat_references(
+            session,
+            companion_id,
+            conversation.id,
+            message_ids,
+            decision_ids,
+        )
+        await DialogueService().discard_conversation_decisions(session, companion_id, conversation.id)
+        await MemoryContextService().detach_chat_log(session, companion_id, conversation.id, message_ids)
+        deleted = await self._messages.delete_for_conversation(session, conversation.id)
+        now = datetime.now(UTC)
+        conversation.last_message_at = None
+        conversation.next_sequence_number = 1
+        conversation.updated_at = now
+        await session.flush()
+        logger.info("cleared %s messages in conversation %s", deleted, conversation.id)
+        return deleted
 
     async def list_conversations(
         self,

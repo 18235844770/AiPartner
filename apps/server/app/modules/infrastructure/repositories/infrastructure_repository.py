@@ -145,6 +145,15 @@ class ModelCallLogRepository:
             .values(dialogue_decision_id=decision_id)
         )
 
+    async def unlink_decisions(self, session: AsyncSession, decision_ids: list[uuid.UUID]) -> None:
+        if not decision_ids:
+            return
+        await session.execute(
+            update(ModelCallLog)
+            .where(ModelCallLog.dialogue_decision_id.in_(decision_ids))
+            .values(dialogue_decision_id=None)
+        )
+
     async def expire_details(self, session: AsyncSession, now: datetime) -> None:
         await session.execute(
             update(ModelCallLog)
