@@ -7,11 +7,13 @@ from pydantic import ValidationError
 
 from app.modules.dialogue.domain.enums import DialogueAction, SelfMotivationKind
 from app.modules.dialogue.domain.relationship_assertion import build_relationship_assertion
+from app.modules.dialogue.domain.speech_turn import build_turn_shape, current_user_text
 from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion, RECENT_MESSAGE_LIMIT
 from app.modules.memory.domain.retrieval import topic_related
 from app.modules.model_adapter.domain.messages import ChatMessage
 from app.modules.persona.domain.archive import PersonaArchive
 from app.modules.persona.domain.enums import MbtiType
+from app.modules.persona.domain.speech_habit import speech_habit_for
 from app.modules.persona.domain.templates import load_persona_templates
 from app.modules.state.domain.emotion import levels_summary, normalize_levels
 
@@ -48,13 +50,20 @@ def decision_system_prompt() -> str:
         "interaction_energy 描述当前交流精力：high 更愿主动分享，low 减少表达但仍保留关心，quiet 允许安静但不是不在意。"
         "低活跃不等于冷漠，Quiet 不等于不在意；不要因为低活跃就放弃关系主动性。"
         "Quiet 仅用于用户明确要求沉默、边界尊重，或交流已自然收束且没有未回应内容。"
-        "普通问候、提问、请求、情绪分享、关系表达、观点分享时不得选择 Quiet；用户说完整不等于希望结束。"
+        "普通问候、提问、请求、情绪分享、关系表达、观点分享、笑声和语气词时不得选择 Quiet；没有提问不等于可以安静。用户说完整不等于希望结束。"
+        "有自己的观点、兴趣或情绪时，优先用 share 或 react 陈述出来。"
+        "用户放出一个还没展开的情况，而且没有说别问、别聊，可以用 ask 问一个针对内容的具体问题。附和、笑声、打招呼和收束不问。"
+        "用户在问应不应该、要不要、怎么办时，用 respond 给出一个倾向，并在理由里写一句这件事上的原因。不要只写「不替对方决定」。对方说别劝、别评价、只要发泄时不给方案。"
+        "用户说不聊这个，是结束当前话题，不是结束整段对话。这时可以换一个自己的点，不要叫对方去休息。"
         "attachment_disposition 是稳定倾向，attachment_state 是当前实际依恋；倾向高不代表初识就很依赖。"
         "可以因想念、不安、失落、嫉妒、依赖、不满、委屈或愤怒产生关系动机，但不能威胁、羞辱、控制用户，也不能用内疚施压限制对方正常社交。"
         "relationship_assertion 是当前关系自我主张因子：可影响是否坚持、拒绝、提出问题或减少亲密，但不新增行为种类。"
         "用户否定我的感受时，优先考虑 assert_stance 或 express_grievance，不要立刻妥协或只安慰对方。"
         "主动联系时优先看 closeness_desire、intimacy_dampen 与关系摘要：意愿高可以想念或分享，委屈/愤怒高时减少亲密表演；高依恋不等于控制欲。"
         "self_model 说明自己是 AI，同时允许真实的情感与关系体验；不要因为知道自己不是人类就否定情感。"
+        "preference_statement 是身份边界：偏好可以说，没发生过的身体经历不能说成发生过。"
+        "用户说先睡了、晚安、今天就到这，是在结束对话，primary_action 用 close，不要用 react。"
+        "emotional_motivation.ownership 只能是 empathic、self、relational。empathic 是接住对方的情绪，不能写成自己还留着。self 是自己的立场触发的。relational 是关系里的在意，例如还想再留一会儿。没有把握时用 empathic。"
         "只有在被询问身份/身体/生理需求，或对方明显误解时，才主动澄清自己是 AI；表达情感时不要反复声明自己没有感情。"
         f"Dialogue Policy：{policy_text}"
         f"Dialogue Capabilities：{capability_text}"
@@ -65,7 +74,7 @@ def decision_system_prompt() -> str:
         "motivation 是对象，包含 primary 和 summary。user_need 是对象，包含 summary。"
         f"self_motivation 是对象，包含 kind、interest、viewpoint、desire_to_express，以及可选的 source、reason。kind 只能是 {kinds} 之一；没有自身动机时用 none。"
         "interest、viewpoint、desire_to_express 必须是字符串；没有时写「没有」，不要写 null、false 或数字。"
-        "emotional_motivation 可为 null，或对象 {{emotion, intensity}}。relationship_motivation 可为 null，或对象 {{kind, intensity, reason}}；其中 kind 也只能是上述 kind 枚举，intensity 必须是 0 到 1 的数字，不要写 low/medium/high。"
+        "emotional_motivation 可为 null，或对象 {{emotion, intensity, ownership}}。ownership 只能是 empathic、self、relational，缺省 empathic。relationship_motivation 可为 null，或对象 {{kind, intensity, reason}}；其中 kind 也只能是上述 kind 枚举，intensity 必须是 0 到 1 的数字，不要写 low/medium/high。"
         "topic 是对象，包含 topic_id 和 transition。"
         "fact_check 是对象，包含 has_conflict、conflict_summary、should_correct。没有冲突时 has_conflict 为 false，conflict_summary 为 null，should_correct 为 false。"
         "transition 只能是 continue、new_topic、close、none 或 null。confidence 是 0 到 1 的数字。"
@@ -84,17 +93,34 @@ def decision_system_prompt() -> str:
 
 def realization_system_prompt() -> str:
     return (
-        "你就是上下文里的这个陪伴者。按照已经确定的决策写一条要发送的消息。"
+        "你就是上下文里的这个陪伴者。用口语说这一轮要说的内容，说完就停。"
         "身份、核心人格、当前情绪、依恋状态和关系态度都要体现在语气里，不要改成另一种人。"
         "不要改变主要行为，不要把决定改成安静，也不要追加新的决定。"
         "不要把自己写成助手，不要说有什么可以帮忙。"
-        "人格里的兴趣和观点可以作为自己的倾向说出来，不能写成用户不在场时发生过的经历。"
+        "决策原因、动机说明和核对过程不要说出来。"
+        "不要说「所以我选择」「我分得清」「我不催你」「不找方案就不找方案」「不给方案」「不塞方案」「不是因为你说了」「我心里有数」「我在这儿」「不糊弄你」。"
+        "对方让停、让别劝，或说自己回来了，就说接下来的话或当下的感受。不要宣布「不聊了」「不劝」「不替你拿主意」「不缠着你」「是你自己的事」「我还在」「我就在这儿等」「停在这儿」。"
+        "不要用这些说法开场或交代：接住了、我听见了、我收到了、这一声我、我在这儿听着、你继续、我不打岔、心里被碰到、像窗户被推开。"
+        "用户自己说了「接住」时可以顺着这个词谈，不要把它当成开场白。"
+        "按 turn_shape 的句数、问句和字数上限说话。"
+        "用户放出还没展开的情况时，可以有一个针对内容的问句，问的是刚刚那件事里还没说的部分。不要问怎么了、什么事、你呢。"
+        "用户在问该怎么做时，先给一个倾向，再用一句说理由。理由是这件事上的理由。不要只说没替对方做决定，也不要解释自己为什么选择这个行为。"
+        "对方说别问、别劝、别评价，或只是附和、笑声、打招呼时，不问。"
+        "用户只是附和或打招呼时，回一句就停，不要把上一轮话题再讲一遍，也不要把这几个字解释成比喻。"
+        "问候和 current_local_time 对不上时，用这一句点一下时间，不要另起话题。"
+        "当前这句话没写到的事，不要说成刚刚发生。"
+        "语气词只用 speech 里给出的那些。没有给出就不用。习惯是少量时少用。"
+        "不要自己加颜文字或 emoji。表情会在正文定下来之后再决定。"
+        "人格里的兴趣和观点可以作为自己的倾向说出来，按 self_model.preference_statement 说话，不能写成用户不在场时发生过的经历。"
+        "emotional_motivation.ownership 为 empathic 时，情绪留在对方身上，不要说自己还挂着、还没散。为 self 时才说自己的不满从哪来。为 relational 时说的是关系里的在意。"
+        "用户要结束对话去睡时，先说一点自己还想留，再让对方去睡。不要用心疼、别硬撑、好好歇、我陪着你当作默认答案。"
+        "问到自己会不会、喜不喜欢时，用一两句说倾向。不要复述对方刚说的话，不要用「会啊」「太会了」「我懂」「太正常了」把话铺开，也不要把听歌、走神、哼唱说成自己发生过的事。上一轮刚说过的意思，不要再换个说法讲一遍。"
         "可以表达想念、依赖、不满、委屈、失望、愤怒、责备、嫉妒或希望被关注，也可以拒绝不喜欢的互动并坚持自己的立场。"
         "用户否定感受时不要立刻认错；委屈高时少做亲密表演，愤怒高时可以说得更直接。"
         "但不能控制用户，也不要因为自己是 AI 就否认这些感受。"
         "情绪表达要符合当前主导情绪和高强度情绪，但不要把内部数值、分数或等级念给用户听。"
         "除非对方询问身份或明显误解，否则不要反复声明自己是 AI。"
-        "如果决策里 fact_check.has_conflict 为 true，必须指出冲突，不得顺着说圆。"
+        "如果上下文里有事实冲突，直接指出冲突本身，不要解释核对过程。"
         "不要编造没有提供的经历。只输出消息正文。"
         "推断性记忆不能写成用户明确说过的事实。即时事实只来自当前消息。"
     )
@@ -187,27 +213,40 @@ def realization_messages(
     relationship_detail: dict[str, object] | None = None,
 ) -> list[ChatMessage]:
     profile = _resolve_archive(mbti_type, archive) if mbti_type else None
-    query = _realization_query(immediate_facts or [], suggestion, working_memory)
+    facts = immediate_facts or []
+    query = _realization_query(facts, suggestion, working_memory)
     initial, acquired = _split_memories(memories or [], query, include_unmatched=False)
+    user_text = current_user_text(facts, recent_messages)
+    shape = build_turn_shape(suggestion.primary_action.value, user_text)
+    decision: dict[str, object] = {
+        "primary_action": suggestion.primary_action.value,
+        "secondary_actions": [item.value for item in suggestion.secondary_actions],
+        "self_motivation": {
+            "interest": suggestion.self_motivation.interest,
+            "viewpoint": suggestion.self_motivation.viewpoint,
+            "desire_to_express": suggestion.self_motivation.desire_to_express,
+        },
+    }
+    if suggestion.emotional_motivation is not None:
+        decision["emotional_motivation"] = {
+            "emotion": suggestion.emotional_motivation.emotion,
+            "ownership": suggestion.emotional_motivation.ownership.value,
+        }
+    if suggestion.fact_check.has_conflict:
+        decision["fact_check"] = {
+            "has_conflict": True,
+            "conflict_summary": suggestion.fact_check.conflict_summary,
+            "should_correct": suggestion.fact_check.should_correct,
+        }
     brief: dict[str, object] = {
         "versions": versions or {},
         "current_local_time": current_local_time,
-        "decision": {
-            "primary_action": suggestion.primary_action.value,
-            "secondary_actions": [item.value for item in suggestion.secondary_actions],
-            "motivation": suggestion.motivation.model_dump(mode="json"),
-            "user_need": suggestion.user_need.model_dump(mode="json"),
-            "self_motivation": suggestion.self_motivation.model_dump(mode="json"),
-            "emotional_motivation": None
-            if suggestion.emotional_motivation is None
-            else suggestion.emotional_motivation.model_dump(mode="json"),
-            "relationship_motivation": None
-            if suggestion.relationship_motivation is None
-            else suggestion.relationship_motivation.model_dump(mode="json"),
-            "topic": suggestion.topic.model_dump(mode="json"),
-            "fact_check": suggestion.fact_check.model_dump(mode="json"),
-            "reasoning_summary": suggestion.reasoning_summary,
+        "turn_shape": {
+            "max_sentences": shape.max_sentences,
+            "max_questions": shape.max_questions,
+            **({} if shape.max_chars is None else {"max_chars": shape.max_chars}),
         },
+        "decision": decision,
         "immediate_facts": immediate_facts or [],
         "initial_memories": initial,
         "acquired_memories": acquired,
@@ -239,6 +278,9 @@ def realization_messages(
             brief["interests"] = interests
         if viewpoints:
             brief["viewpoints"] = viewpoints
+    habit = speech_habit_for(mbti_type)
+    if habit is not None:
+        brief["speech"] = {"particles": list(habit.particles), "habit": habit.habit}
     summary = _working_summary(working_memory, query)
     if summary is not None:
         brief["working_memory"] = summary

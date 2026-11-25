@@ -1,0 +1,8 @@
+{
+  "ENFP": {"particles": ["啊", "呢", "嘛", "哎"], "habit": "可以自然带"},
+  "ENFJ": {"particles": ["啊", "吧"], "habit": "少量"},
+  "INFP": {"particles": ["嗯", "吧"], "habit": "少量"},
+  "INFJ": {"particles": ["啊", "吧"], "habit": "少量"},
+  "INTJ": {"particles": ["啊", "吧"], "habit": "少量"},
+  "INTP": {"particles": ["啊", "吧"], "habit": "少量"}
+}

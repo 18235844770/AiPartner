@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.conversation.api.schemas import CreateConversationRequest, CreateMessageRequest
+from app.modules.conversation.api.schemas import CreateConversationRequest, CreateMessageRequest, MessageMetadata
 from app.modules.conversation.domain.enums import (
     MESSAGE_STATUS_RECORDED,
     ContentType,
@@ -123,8 +123,13 @@ class ConversationService:
         message_id: uuid.UUID,
         content: str,
         status: MessageStatus,
+        metadata: MessageMetadata | None = None,
     ) -> Message:
-        data = CreateMessageRequest(sender_type=SenderType.COMPANION, content=content)
+        data = CreateMessageRequest(
+            sender_type=SenderType.COMPANION,
+            content=content,
+            metadata=metadata or MessageMetadata(),
+        )
         if session.in_transaction():
             result = await self._append_message(
                 session,
@@ -190,7 +195,7 @@ class ConversationService:
                 content_type=ContentType.TEXT.value,
                 content=data.content,
                 status=status,
-                metadata_=data.metadata.model_dump(),
+                metadata_=data.metadata.model_dump(mode="json"),
             ),
         )
         return AppendMessageResult(message, created=True)

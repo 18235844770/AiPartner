@@ -7,7 +7,11 @@ from app.modules.conversation.domain.enums import SenderType
 
 
 class MessageMetadata(BaseModel):
+    """delivery_group 把同一次回复拆出的连续消息标成一组。"""
+
     model_config = ConfigDict(extra="forbid")
+
+    delivery_group: uuid.UUID | None = None
 
 
 class CreateConversationRequest(BaseModel):

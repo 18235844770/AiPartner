@@ -64,8 +64,14 @@ async function onPresetChange(event: Event): Promise<void> {
 watch(() => [props.apiBaseUrl, props.userId, props.companionId] as const, () => {
   void loadVoicePresets();
 }, { immediate: true });
+let spokenTurn = "";
 const chat = useChat(scopeOf, {
-  onCompanionMessageCompleted: (messageId) => {
+  onCompanionMessageCompleted: (messageId, turnId) => {
+    if (turnId && turnId === spokenTurn) {
+      voice.enqueue(messageId);
+      return;
+    }
+    spokenTurn = turnId;
     void voice.speakMessage(messageId);
   },
   onTurnInterrupted: () => {

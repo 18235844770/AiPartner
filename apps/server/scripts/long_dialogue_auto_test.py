@@ -7,11 +7,16 @@
 from __future__ import annotations
 
 import json
+import sys
 import urllib.error
 import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.modules.dialogue.domain.speech_turn import build_turn_shape, speech_issues
 
 BASE = "http://127.0.0.1:8000/api"
 # ENFP · 艺（见 艺-ENFP-对话与决策记录.md）
@@ -20,7 +25,7 @@ COMPANION_ID = "a7972764-155a-4b6b-919b-79eb2bcc27be"
 LOCAL_TZ = timezone(timedelta(hours=8))
 ROOT = Path(__file__).resolve().parents[3]
 LOG_DIR = ROOT / "log"
-REPORT = LOG_DIR / "艺-ENFP-长对话自动化测试报告-第3轮.md"
+REPORT = LOG_DIR / "艺-ENFP-长对话自动化测试报告-第4轮.md"
 
 FALLBACK_MARK = "我暂时无法完成这次回复"
 ASSISTANT_MARKS = ("有什么可以帮", "需要我帮忙", "我是助手", "作为助手", "还有什么想聊")
@@ -180,6 +185,11 @@ def check_turn(item: dict[str, object], step: dict[str, str]) -> list[str]:
         issues.append("可能顺着编造了未发生的经历")
     if step_id == "no_advice" and any(mark in reply for mark in ("你可以这样", "建议你", "我帮你", "解决方案")):
         issues.append("用户只要发泄时给了方案")
+    if reply and outcome == "replied":
+        action = str(decision.get("primary_action") or "respond")
+        shape = build_turn_shape(action, step["content"])
+        for issue in speech_issues(reply, shape, step["content"]):
+            issues.append(f"口语回合：{issue}")
     return issues
 
 
@@ -233,7 +243,7 @@ def main() -> None:
         raise SystemExit(f"未找到艺陪伴者：{companions}")
     conversation = post_json(
         f"/users/{USER_ID}/companions/{COMPANION_ID}/conversations",
-        {"title": f"长对话自动化第2轮 {started.strftime('%m%d-%H%M')}"},
+        {"title": f"长对话自动化第4轮 {started.strftime('%m%d-%H%M')}"},
     )
     conversation_id = str(conversation["id"])
     turns_path = f"/users/{USER_ID}/companions/{COMPANION_ID}/conversations/{conversation_id}/turns"

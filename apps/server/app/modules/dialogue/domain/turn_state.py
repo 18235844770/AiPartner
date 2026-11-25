@@ -112,6 +112,7 @@ def plan_turn_state(
     self_motivation_kind: SelfMotivationKind | None = None,
     relationship_motivation_kind: SelfMotivationKind | None = None,
     user_message: str | None = None,
+    emotion_ownership: str | None = None,
 ) -> TurnStateUpdate | None:
     """被拦住，或模型失败且这一轮没有发生交流时，不写状态。"""
     if blocked or (fallback and not user_spoke and not should_send):
@@ -175,6 +176,8 @@ def plan_turn_state(
             reason += "。依据：" + "；".join(attachment.reasons)
         elif next_relationship is not None:
             reason += "。关系总分保持原样，仅更新依恋相关状态"
+        if emotion_ownership:
+            reason += f"。情绪归属：{emotion_ownership}"
     return TurnStateUpdate(
         reason=reason,
         emotion=next_emotion,

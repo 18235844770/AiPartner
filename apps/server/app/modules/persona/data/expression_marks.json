@@ -1,0 +1,1570 @@
+{
+  "emoji": [
+    {
+      "id": "joy",
+      "label": "开心、愉悦",
+      "items": [
+        {
+          "mark": "😊",
+          "meaning": "温和的开心、友善",
+          "intensity": "低",
+          "scenes": [
+            "日常回应",
+            "轻微愉悦"
+          ]
+        },
+        {
+          "mark": "😄",
+          "meaning": "明显开心、爽朗",
+          "intensity": "中",
+          "scenes": [
+            "听到有趣的事情"
+          ]
+        },
+        {
+          "mark": "😆",
+          "meaning": "忍不住笑、很开心",
+          "intensity": "中高",
+          "scenes": [
+            "被逗笑",
+            "开心互动"
+          ]
+        },
+        {
+          "mark": "😂",
+          "meaning": "笑到不行",
+          "intensity": "高",
+          "scenes": [
+            "非常好笑的事情"
+          ]
+        },
+        {
+          "mark": "🤣",
+          "meaning": "笑疯了、笑得停不下来",
+          "intensity": "高",
+          "scenes": [
+            "强烈的搞笑场景"
+          ]
+        },
+        {
+          "mark": "😁",
+          "meaning": "露齿笑、心情不错",
+          "intensity": "中",
+          "scenes": [
+            "得意",
+            "满足"
+          ]
+        },
+        {
+          "mark": "😃",
+          "meaning": "兴奋、明朗",
+          "intensity": "中",
+          "scenes": [
+            "遇到开心的事情"
+          ]
+        },
+        {
+          "mark": "🥰",
+          "meaning": "喜欢、甜蜜、被融化",
+          "intensity": "中高",
+          "scenes": [
+            "亲密互动"
+          ]
+        },
+        {
+          "mark": "😍",
+          "meaning": "喜爱、惊艳、心动",
+          "intensity": "高",
+          "scenes": [
+            "对喜欢的人或事物表达欣赏"
+          ]
+        },
+        {
+          "mark": "🤭",
+          "meaning": "偷笑、憋笑",
+          "intensity": "中",
+          "scenes": [
+            "有点小坏",
+            "害羞地笑"
+          ]
+        },
+        {
+          "mark": "😋",
+          "meaning": "开心、俏皮、满足",
+          "intensity": "中",
+          "scenes": [
+            "美食",
+            "调皮互动"
+          ]
+        },
+        {
+          "mark": "😜",
+          "meaning": "调皮、吐舌头",
+          "intensity": "中",
+          "scenes": [
+            "开玩笑",
+            "故意逗人"
+          ]
+        },
+        {
+          "mark": "😝",
+          "meaning": "顽皮、搞怪",
+          "intensity": "中高",
+          "scenes": [
+            "熟悉关系中的玩笑"
+          ]
+        },
+        {
+          "mark": "🤗",
+          "meaning": "拥抱、温暖、欢迎",
+          "intensity": "中",
+          "scenes": [
+            "安慰",
+            "迎接",
+            "亲近"
+          ]
+        },
+        {
+          "mark": "🥳",
+          "meaning": "庆祝、兴奋",
+          "intensity": "高",
+          "scenes": [
+            "值得庆祝的事情"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "affection",
+      "label": "温柔、亲密、爱意",
+      "items": [
+        {
+          "mark": "🥰",
+          "meaning": "甜蜜、喜欢",
+          "intensity": "中高",
+          "scenes": [
+            "亲密互动"
+          ]
+        },
+        {
+          "mark": "😘",
+          "meaning": "亲吻、表达爱意",
+          "intensity": "高",
+          "scenes": [
+            "亲密告别",
+            "撒娇"
+          ]
+        },
+        {
+          "mark": "😚",
+          "meaning": "温柔亲吻",
+          "intensity": "中高",
+          "scenes": [
+            "温柔的亲密互动"
+          ]
+        },
+        {
+          "mark": "😙",
+          "meaning": "轻松、带笑意的亲吻",
+          "intensity": "中",
+          "scenes": [
+            "俏皮亲近"
+          ]
+        },
+        {
+          "mark": "😗",
+          "meaning": "轻轻亲吻",
+          "intensity": "中",
+          "scenes": [
+            "简单的亲密表达"
+          ]
+        },
+        {
+          "mark": "❤️",
+          "meaning": "爱意、深情",
+          "intensity": "高",
+          "scenes": [
+            "明确表达爱意"
+          ]
+        },
+        {
+          "mark": "🩷",
+          "meaning": "温柔、甜蜜的喜欢",
+          "intensity": "中",
+          "scenes": [
+            "日常亲密表达"
+          ]
+        },
+        {
+          "mark": "💗",
+          "meaning": "心动、感情逐渐增强",
+          "intensity": "中高",
+          "scenes": [
+            "情感升温"
+          ]
+        },
+        {
+          "mark": "💕",
+          "meaning": "双向喜欢、甜蜜",
+          "intensity": "中",
+          "scenes": [
+            "亲密互动"
+          ]
+        },
+        {
+          "mark": "💞",
+          "meaning": "彼此亲近、感情流动",
+          "intensity": "中高",
+          "scenes": [
+            "双向情感"
+          ]
+        },
+        {
+          "mark": "💓",
+          "meaning": "心动、紧张、激动",
+          "intensity": "中高",
+          "scenes": [
+            "害羞或心动"
+          ]
+        },
+        {
+          "mark": "💘",
+          "meaning": "坠入爱河、被击中",
+          "intensity": "高",
+          "scenes": [
+            "浪漫情境"
+          ]
+        },
+        {
+          "mark": "💝",
+          "meaning": "特别的爱意、珍视",
+          "intensity": "高",
+          "scenes": [
+            "表达重视"
+          ]
+        },
+        {
+          "mark": "🫶",
+          "meaning": "双手比心、支持与喜欢",
+          "intensity": "中高",
+          "scenes": [
+            "表达支持",
+            "珍惜"
+          ]
+        },
+        {
+          "mark": "🫂",
+          "meaning": "拥抱、安慰、陪伴",
+          "intensity": "中高",
+          "scenes": [
+            "情绪安慰",
+            "亲密互动"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "shy",
+      "label": "害羞、尴尬、不好意思",
+      "items": [
+        {
+          "mark": "😊",
+          "meaning": "腼腆、温和的笑",
+          "intensity": "低",
+          "scenes": [
+            "轻微害羞"
+          ]
+        },
+        {
+          "mark": "☺️",
+          "meaning": "含蓄、羞涩的笑",
+          "intensity": "低",
+          "scenes": [
+            "温柔回应"
+          ]
+        },
+        {
+          "mark": "😳",
+          "meaning": "脸红、被说中心事",
+          "intensity": "中高",
+          "scenes": [
+            "突然害羞"
+          ]
+        },
+        {
+          "mark": "🫣",
+          "meaning": "捂眼偷看、又怕又想看",
+          "intensity": "中",
+          "scenes": [
+            "害羞",
+            "好奇"
+          ]
+        },
+        {
+          "mark": "🫢",
+          "meaning": "惊讶、捂嘴",
+          "intensity": "中",
+          "scenes": [
+            "意外",
+            "说漏嘴"
+          ]
+        },
+        {
+          "mark": "🤭",
+          "meaning": "捂嘴偷笑",
+          "intensity": "中",
+          "scenes": [
+            "害羞",
+            "暗自开心"
+          ]
+        },
+        {
+          "mark": "🥹",
+          "meaning": "感动、眼含泪光",
+          "intensity": "中高",
+          "scenes": [
+            "被打动",
+            "委屈又感动"
+          ]
+        },
+        {
+          "mark": "😅",
+          "meaning": "尴尬地笑、缓解气氛",
+          "intensity": "中",
+          "scenes": [
+            "不好意思",
+            "冷场"
+          ]
+        },
+        {
+          "mark": "😬",
+          "meaning": "难为情、局促",
+          "intensity": "中",
+          "scenes": [
+            "尴尬",
+            "不知如何回应"
+          ]
+        },
+        {
+          "mark": "🫠",
+          "meaning": "融化、无奈、羞到不行",
+          "intensity": "中高",
+          "scenes": [
+            "被撩",
+            "社交尴尬"
+          ]
+        },
+        {
+          "mark": "🙈",
+          "meaning": "害羞、捂脸不看",
+          "intensity": "中",
+          "scenes": [
+            "被调侃",
+            "暧昧"
+          ]
+        },
+        {
+          "mark": "🙊",
+          "meaning": "捂嘴、闭口不说",
+          "intensity": "中",
+          "scenes": [
+            "不好意思",
+            "保守秘密"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sadness",
+      "label": "悲伤、委屈、失落",
+      "items": [
+        {
+          "mark": "🥺",
+          "meaning": "委屈、期待安慰",
+          "intensity": "中",
+          "scenes": [
+            "撒娇",
+            "希望被关注"
+          ]
+        },
+        {
+          "mark": "🥹",
+          "meaning": "感动、眼泪打转",
+          "intensity": "中",
+          "scenes": [
+            "感动",
+            "心软"
+          ]
+        },
+        {
+          "mark": "😢",
+          "meaning": "难过、流泪",
+          "intensity": "中",
+          "scenes": [
+            "伤心",
+            "失望"
+          ]
+        },
+        {
+          "mark": "😭",
+          "meaning": "大哭、强烈悲伤",
+          "intensity": "高",
+          "scenes": [
+            "强烈委屈或难过"
+          ]
+        },
+        {
+          "mark": "😞",
+          "meaning": "失望、沮丧",
+          "intensity": "中",
+          "scenes": [
+            "期待落空"
+          ]
+        },
+        {
+          "mark": "😔",
+          "meaning": "低落、失落",
+          "intensity": "中",
+          "scenes": [
+            "心情不好"
+          ]
+        },
+        {
+          "mark": "🙁",
+          "meaning": "不太开心",
+          "intensity": "低",
+          "scenes": [
+            "轻微失望"
+          ]
+        },
+        {
+          "mark": "☹️",
+          "meaning": "难过、不满",
+          "intensity": "中",
+          "scenes": [
+            "明显不开心"
+          ]
+        },
+        {
+          "mark": "😟",
+          "meaning": "担忧、焦虑",
+          "intensity": "中",
+          "scenes": [
+            "对事情感到不安"
+          ]
+        },
+        {
+          "mark": "😥",
+          "meaning": "难过又无奈",
+          "intensity": "中",
+          "scenes": [
+            "压力",
+            "疲惫"
+          ]
+        },
+        {
+          "mark": "😓",
+          "meaning": "心累、压力大",
+          "intensity": "中",
+          "scenes": [
+            "感到疲惫"
+          ]
+        },
+        {
+          "mark": "😿",
+          "meaning": "委屈、可怜兮兮",
+          "intensity": "中",
+          "scenes": [
+            "撒娇式委屈"
+          ]
+        },
+        {
+          "mark": "💔",
+          "meaning": "心碎、受伤",
+          "intensity": "高",
+          "scenes": [
+            "强烈失望",
+            "情感受挫"
+          ]
+        },
+        {
+          "mark": "🥀",
+          "meaning": "枯萎、失去热情",
+          "intensity": "高",
+          "scenes": [
+            "低落",
+            "失望"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anger",
+      "label": "生气、吃醋、不满",
+      "items": [
+        {
+          "mark": "😒",
+          "meaning": "不满、嫌弃",
+          "intensity": "中",
+          "scenes": [
+            "轻微不悦"
+          ]
+        },
+        {
+          "mark": "🙄",
+          "meaning": "翻白眼、无语",
+          "intensity": "中",
+          "scenes": [
+            "吐槽",
+            "嫌弃"
+          ]
+        },
+        {
+          "mark": "😑",
+          "meaning": "无语、无表情",
+          "intensity": "中",
+          "scenes": [
+            "不想继续解释"
+          ]
+        },
+        {
+          "mark": "😐",
+          "meaning": "平静、冷淡",
+          "intensity": "低",
+          "scenes": [
+            "情绪收敛"
+          ]
+        },
+        {
+          "mark": "😤",
+          "meaning": "生气、气鼓鼓",
+          "intensity": "中高",
+          "scenes": [
+            "不满",
+            "傲娇"
+          ]
+        },
+        {
+          "mark": "😠",
+          "meaning": "生气、不高兴",
+          "intensity": "高",
+          "scenes": [
+            "明确表达愤怒"
+          ]
+        },
+        {
+          "mark": "😡",
+          "meaning": "愤怒、强烈不满",
+          "intensity": "高",
+          "scenes": [
+            "激烈冲突"
+          ]
+        },
+        {
+          "mark": "🤬",
+          "meaning": "暴怒、非常生气",
+          "intensity": "极高",
+          "scenes": [
+            "极端情绪，不宜频繁使用"
+          ]
+        },
+        {
+          "mark": "😾",
+          "meaning": "傲娇式生气",
+          "intensity": "中",
+          "scenes": [
+            "轻微吃醋",
+            "闹别扭"
+          ]
+        },
+        {
+          "mark": "🥺",
+          "meaning": "委屈、吃醋",
+          "intensity": "中",
+          "scenes": [
+            "需要注意语境"
+          ]
+        },
+        {
+          "mark": "💢",
+          "meaning": "怒气、恼火",
+          "intensity": "高",
+          "scenes": [
+            "生气",
+            "吐槽"
+          ]
+        },
+        {
+          "mark": "🫤",
+          "meaning": "犹豫、不太满意",
+          "intensity": "中",
+          "scenes": [
+            "复杂、不确定的情绪"
+          ]
+        },
+        {
+          "mark": "😤",
+          "meaning": "不服气、嘴硬",
+          "intensity": "中高",
+          "scenes": [
+            "争执",
+            "傲娇"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "surprise",
+      "label": "惊讶、疑惑、思考",
+      "items": [
+        {
+          "mark": "😮",
+          "meaning": "惊讶、意外",
+          "intensity": "中",
+          "scenes": [
+            "听到意外消息"
+          ]
+        },
+        {
+          "mark": "😯",
+          "meaning": "吃惊、愣住",
+          "intensity": "中",
+          "scenes": [
+            "突然意识到什么"
+          ]
+        },
+        {
+          "mark": "😲",
+          "meaning": "非常震惊",
+          "intensity": "高",
+          "scenes": [
+            "超出预期"
+          ]
+        },
+        {
+          "mark": "😳",
+          "meaning": "震惊、难以置信",
+          "intensity": "中高",
+          "scenes": [
+            "意外或害羞"
+          ]
+        },
+        {
+          "mark": "🤔",
+          "meaning": "思考、琢磨",
+          "intensity": "中",
+          "scenes": [
+            "思考问题"
+          ]
+        },
+        {
+          "mark": "🧐",
+          "meaning": "仔细观察、审视",
+          "intensity": "中",
+          "scenes": [
+            "怀疑",
+            "认真分析"
+          ]
+        },
+        {
+          "mark": "🤨",
+          "meaning": "怀疑、质疑",
+          "intensity": "中",
+          "scenes": [
+            "不太相信"
+          ]
+        },
+        {
+          "mark": "😕",
+          "meaning": "困惑、不理解",
+          "intensity": "中",
+          "scenes": [
+            "不确定"
+          ]
+        },
+        {
+          "mark": "😵",
+          "meaning": "晕头转向、混乱",
+          "intensity": "高",
+          "scenes": [
+            "信息过载"
+          ]
+        },
+        {
+          "mark": "🫨",
+          "meaning": "震惊、被吓到",
+          "intensity": "高",
+          "scenes": [
+            "强烈意外"
+          ]
+        },
+        {
+          "mark": "🤯",
+          "meaning": "大脑炸裂、震撼",
+          "intensity": "高",
+          "scenes": [
+            "认知冲击"
+          ]
+        },
+        {
+          "mark": "🫡",
+          "meaning": "收到、认真回应",
+          "intensity": "中",
+          "scenes": [
+            "玩笑式服从",
+            "致意"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tired",
+      "label": "困倦、疲惫、放松",
+      "items": [
+        {
+          "mark": "😴",
+          "meaning": "睡着、困倦",
+          "intensity": "中",
+          "scenes": [
+            "睡觉",
+            "晚安"
+          ]
+        },
+        {
+          "mark": "🥱",
+          "meaning": "打哈欠、犯困",
+          "intensity": "中",
+          "scenes": [
+            "疲惫",
+            "无聊"
+          ]
+        },
+        {
+          "mark": "😪",
+          "meaning": "困倦、疲惫",
+          "intensity": "中",
+          "scenes": [
+            "想休息"
+          ]
+        },
+        {
+          "mark": "😮‍💨",
+          "meaning": "长舒一口气",
+          "intensity": "中",
+          "scenes": [
+            "放松",
+            "无奈"
+          ]
+        },
+        {
+          "mark": "😌",
+          "meaning": "安心、舒适、满足",
+          "intensity": "低",
+          "scenes": [
+            "放松",
+            "释然"
+          ]
+        },
+        {
+          "mark": "😶‍🌫️",
+          "meaning": "迷迷糊糊、脑袋放空",
+          "intensity": "中",
+          "scenes": [
+            "困倦",
+            "思绪混乱"
+          ]
+        },
+        {
+          "mark": "🫧",
+          "meaning": "轻盈、放空、泡泡感",
+          "intensity": "低",
+          "scenes": [
+            "轻松",
+            "治愈氛围"
+          ]
+        },
+        {
+          "mark": "🛌",
+          "meaning": "睡觉、休息",
+          "intensity": "低",
+          "scenes": [
+            "睡前告别"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "playful",
+      "label": "调皮、暧昧、戏谑",
+      "items": [
+        {
+          "mark": "😏",
+          "meaning": "坏笑、意味深长",
+          "intensity": "中",
+          "scenes": [
+            "调侃",
+            "暧昧"
+          ]
+        },
+        {
+          "mark": "😉",
+          "meaning": "眨眼、暗示、你懂的",
+          "intensity": "中",
+          "scenes": [
+            "俏皮",
+            "打趣"
+          ]
+        },
+        {
+          "mark": "😜",
+          "meaning": "调皮、吐舌头",
+          "intensity": "中",
+          "scenes": [
+            "开玩笑"
+          ]
+        },
+        {
+          "mark": "🤭",
+          "meaning": "偷笑、暗自得意",
+          "intensity": "中",
+          "scenes": [
+            "调侃",
+            "害羞"
+          ]
+        },
+        {
+          "mark": "😈",
+          "meaning": "小恶魔、使坏",
+          "intensity": "中高",
+          "scenes": [
+            "熟悉关系中的玩笑"
+          ]
+        },
+        {
+          "mark": "👀",
+          "meaning": "关注、吃瓜、期待后续",
+          "intensity": "中",
+          "scenes": [
+            "好奇",
+            "等着看"
+          ]
+        },
+        {
+          "mark": "🙃",
+          "meaning": "无奈、反话、反讽",
+          "intensity": "中",
+          "scenes": [
+            "吐槽",
+            "轻微不满"
+          ]
+        },
+        {
+          "mark": "🤪",
+          "meaning": "搞怪、放飞自我",
+          "intensity": "高",
+          "scenes": [
+            "夸张玩笑"
+          ]
+        },
+        {
+          "mark": "🫠",
+          "meaning": "被撩到、无奈融化",
+          "intensity": "中高",
+          "scenes": [
+            "暧昧",
+            "害羞"
+          ]
+        }
+      ]
+    }
+  ],
+  "kaomoji": {
+    "description": "颜文字比 Emoji 更适合表达细腻、生活化的情绪。它们可以作为艺的日常表达资源，尤其适合轻松聊天和熟悉关系中的互动。",
+    "groups": [
+      {
+        "id": "smile",
+        "label": "开心、微笑",
+        "items": [
+          {
+            "mark": "(^_^)",
+            "meaning": "温和的微笑"
+          },
+          {
+            "mark": "(＾▽＾)",
+            "meaning": "开心、明朗"
+          },
+          {
+            "mark": "(≧▽≦)",
+            "meaning": "非常开心"
+          },
+          {
+            "mark": "(๑˃ᴗ˂)ﻭ",
+            "meaning": "兴奋、开心"
+          },
+          {
+            "mark": "(´▽｀)",
+            "meaning": "轻松、满足"
+          },
+          {
+            "mark": "(´∀｀)",
+            "meaning": "自然的笑"
+          },
+          {
+            "mark": "(｡◕‿◕｡)",
+            "meaning": "可爱、友善"
+          },
+          {
+            "mark": "(￣▽￣)",
+            "meaning": "放松、心情不错"
+          },
+          {
+            "mark": "(o^▽^o)",
+            "meaning": "活泼、开朗"
+          },
+          {
+            "mark": "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧",
+            "meaning": "兴奋、欢呼"
+          },
+          {
+            "mark": "(๑´ڡ`๑)",
+            "meaning": "满足、俏皮"
+          },
+          {
+            "mark": "(˶ᵔ ᵕ ᵔ˶)",
+            "meaning": "温柔、开心"
+          }
+        ]
+      },
+      {
+        "id": "shy",
+        "label": "害羞、脸红",
+        "items": [
+          {
+            "mark": "(⁄ ⁄•⁄ω⁄•⁄ ⁄)",
+            "meaning": "害羞、脸红"
+          },
+          {
+            "mark": "(〃▽〃)",
+            "meaning": "不好意思、羞涩"
+          },
+          {
+            "mark": "(/ω＼)",
+            "meaning": "害羞、捂脸"
+          },
+          {
+            "mark": "(⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)",
+            "meaning": "被撩到、非常害羞"
+          },
+          {
+            "mark": "(๑•́ ₃ •̀๑)",
+            "meaning": "有点害羞、撒娇"
+          },
+          {
+            "mark": "(´,,•ω•,,)♡",
+            "meaning": "温柔、喜欢"
+          },
+          {
+            "mark": "(〃ω〃)",
+            "meaning": "羞涩、心动"
+          },
+          {
+            "mark": "(˶˃ ᵕ ˂˶)",
+            "meaning": "开心又害羞"
+          },
+          {
+            "mark": "(⁄ ⁄>⁄ω⁄<⁄ ⁄)",
+            "meaning": "不好意思、心动"
+          }
+        ]
+      },
+      {
+        "id": "pout",
+        "label": "撒娇、委屈",
+        "items": [
+          {
+            "mark": "(｡•́︿•̀｡)",
+            "meaning": "委屈、难过"
+          },
+          {
+            "mark": "(´；ω；`)",
+            "meaning": "想哭、委屈"
+          },
+          {
+            "mark": "(╥﹏╥)",
+            "meaning": "非常难过"
+          },
+          {
+            "mark": "(つ﹏⊂)",
+            "meaning": "想哭、需要安慰"
+          },
+          {
+            "mark": "(｡•́︿•̀｡)",
+            "meaning": "不开心、委屈"
+          },
+          {
+            "mark": "(っ˘̩╭╮˘̩)っ",
+            "meaning": "想要抱抱"
+          },
+          {
+            "mark": "(๑•́ ₃ •̀๑)",
+            "meaning": "撒娇、不满"
+          },
+          {
+            "mark": "(｡•́ωก̀｡)",
+            "meaning": "困倦、撒娇"
+          },
+          {
+            "mark": "(つ≧▽≦)つ",
+            "meaning": "主动拥抱"
+          },
+          {
+            "mark": "(づ｡◕‿‿◕｡)づ",
+            "meaning": "温柔拥抱"
+          }
+        ]
+      },
+      {
+        "id": "upset",
+        "label": "生气、吃醋、闹别扭",
+        "items": [
+          {
+            "mark": "(｀へ´)",
+            "meaning": "不高兴、轻微生气"
+          },
+          {
+            "mark": "(￣へ￣)",
+            "meaning": "不满、闹别扭"
+          },
+          {
+            "mark": "(╬ Ò﹏Ó)",
+            "meaning": "生气、恼火"
+          },
+          {
+            "mark": "(눈_눈)",
+            "meaning": "嫌弃、无语"
+          },
+          {
+            "mark": "(¬_¬)",
+            "meaning": "怀疑、不满"
+          },
+          {
+            "mark": "(｡•ˇ‸ˇ•｡)",
+            "meaning": "闹别扭、委屈"
+          },
+          {
+            "mark": "(｀ε´)",
+            "meaning": "撅嘴、生闷气"
+          },
+          {
+            "mark": "(＃￣0￣)",
+            "meaning": "不服气、抱怨"
+          },
+          {
+            "mark": "(╯°□°）╯︵ ┻━┻",
+            "meaning": "崩溃、掀桌式愤怒"
+          },
+          {
+            "mark": "(￣^￣)",
+            "meaning": "傲娇、不服气"
+          },
+          {
+            "mark": "(￢_￢)",
+            "meaning": "怀疑、嫌弃"
+          },
+          {
+            "mark": "( •̀ - •́ )",
+            "meaning": "认真、不服输"
+          }
+        ]
+      },
+      {
+        "id": "confused",
+        "label": "疑惑、思考、无语",
+        "items": [
+          {
+            "mark": "(・_・?)",
+            "meaning": "疑惑、不理解"
+          },
+          {
+            "mark": "(・・?)",
+            "meaning": "有点疑问"
+          },
+          {
+            "mark": "(￣ω￣;)",
+            "meaning": "尴尬、无奈"
+          },
+          {
+            "mark": "(⊙_⊙)",
+            "meaning": "惊讶、愣住"
+          },
+          {
+            "mark": "(°ロ°) !",
+            "meaning": "震惊"
+          },
+          {
+            "mark": "(¬_¬)",
+            "meaning": "怀疑、无语"
+          },
+          {
+            "mark": "(￣～￣;)",
+            "meaning": "犹豫、思考"
+          },
+          {
+            "mark": "(ー_ー゛)",
+            "meaning": "无奈、沉默"
+          },
+          {
+            "mark": "(・へ・)",
+            "meaning": "不解、不满"
+          },
+          {
+            "mark": "(；￣Д￣)",
+            "meaning": "震惊、崩溃"
+          },
+          {
+            "mark": "(´･_･`)",
+            "meaning": "困惑、低落"
+          },
+          {
+            "mark": "(•ิ_•ิ)?",
+            "meaning": "疑问、好奇"
+          }
+        ]
+      },
+      {
+        "id": "playful",
+        "label": "调皮、搞怪",
+        "items": [
+          {
+            "mark": "(￣y▽￣)╭",
+            "meaning": "坏笑、得意"
+          },
+          {
+            "mark": "(¬‿¬)",
+            "meaning": "狡黠、调侃"
+          },
+          {
+            "mark": "(๑˃̵ᴗ˂̵)",
+            "meaning": "俏皮、开心"
+          },
+          {
+            "mark": "(๑•̀ㅂ•́)و✧",
+            "meaning": "加油、得意"
+          },
+          {
+            "mark": "(｡•̀ᴗ-)✧",
+            "meaning": "眨眼、俏皮"
+          },
+          {
+            "mark": "(≖‿≖)",
+            "meaning": "意味深长的坏笑"
+          },
+          {
+            "mark": "(ಡωಡ)",
+            "meaning": "偷笑、看热闹"
+          },
+          {
+            "mark": "(๑¯◡¯๑)",
+            "meaning": "小得意、满足"
+          },
+          {
+            "mark": "(￣y▽￣)╭ Ohohoho.....",
+            "meaning": "夸张笑声"
+          },
+          {
+            "mark": "(〜￣▽￣)〜",
+            "meaning": "轻松、摇摆"
+          },
+          {
+            "mark": "ヾ(≧▽≦*)o",
+            "meaning": "欢呼、兴奋"
+          },
+          {
+            "mark": "(๑•̀ᗝ•́)૭",
+            "meaning": "斗志、活力"
+          }
+        ]
+      },
+      {
+        "id": "intimate",
+        "label": "拥抱、亲密、喜欢",
+        "items": [
+          {
+            "mark": "(づ￣ ³￣)づ",
+            "meaning": "亲亲、拥抱"
+          },
+          {
+            "mark": "(っ´▽｀)っ",
+            "meaning": "温暖拥抱"
+          },
+          {
+            "mark": "(つ≧▽≦)つ",
+            "meaning": "开心地抱住"
+          },
+          {
+            "mark": "(づ｡◕‿‿◕｡)づ",
+            "meaning": "温柔拥抱"
+          },
+          {
+            "mark": "(♡˙︶˙♡)",
+            "meaning": "喜欢、甜蜜"
+          },
+          {
+            "mark": "(´,,•ω•,,)♡",
+            "meaning": "温柔的爱意"
+          },
+          {
+            "mark": "(｡♥‿♥｡)",
+            "meaning": "心动、喜欢"
+          },
+          {
+            "mark": "(♡ >ω< ♡)",
+            "meaning": "甜蜜、害羞"
+          },
+          {
+            "mark": "(灬º‿º灬)♡",
+            "meaning": "害羞、爱意"
+          },
+          {
+            "mark": "( ˘ ³˘)♥",
+            "meaning": "亲吻、表达喜欢"
+          },
+          {
+            "mark": "(๑♡⌓♡๑)",
+            "meaning": "心动、沉迷"
+          },
+          {
+            "mark": "(♥ω♥*)",
+            "meaning": "非常喜欢"
+          }
+        ]
+      },
+      {
+        "id": "tired",
+        "label": "困倦、疲惫、放松",
+        "items": [
+          {
+            "mark": "(－_－) zzZ",
+            "meaning": "睡着了"
+          },
+          {
+            "mark": "(￣o￣) . z Z",
+            "meaning": "困倦、打瞌睡"
+          },
+          {
+            "mark": "(＿ ＿*) Z z z",
+            "meaning": "熟睡"
+          },
+          {
+            "mark": "(´〜｀*) zzz",
+            "meaning": "犯困"
+          },
+          {
+            "mark": "(ノД`)・゜・。",
+            "meaning": "疲惫、想哭"
+          },
+          {
+            "mark": "(´-ω-`)",
+            "meaning": "放松、困倦"
+          },
+          {
+            "mark": "(´ぅω・｀)",
+            "meaning": "睡眼惺忪"
+          },
+          {
+            "mark": "(｡-_-｡)",
+            "meaning": "安静、疲惫"
+          },
+          {
+            "mark": "(￣ρ￣)..zzZZ",
+            "meaning": "睡着、打呼噜"
+          },
+          {
+            "mark": "( ˘ω˘ )",
+            "meaning": "安稳、放松"
+          }
+        ]
+      }
+    ]
+  },
+  "tone_marks": {
+    "description": "这类符号不一定独立表达情绪，但可以辅助形成语气。",
+    "items": [
+      {
+        "mark": "～",
+        "meaning": "轻松、柔和、拖长语气",
+        "example": "好呀～"
+      },
+      {
+        "mark": "……",
+        "meaning": "犹豫、沉默、停顿",
+        "example": "我想想……"
+      },
+      {
+        "mark": "！",
+        "meaning": "强调、惊讶",
+        "example": "真的！"
+      },
+      {
+        "mark": "！！",
+        "meaning": "强烈情绪",
+        "example": "太好了！！"
+      },
+      {
+        "mark": "？",
+        "meaning": "疑惑、询问",
+        "example": "你确定？"
+      },
+      {
+        "mark": "？！",
+        "meaning": "惊讶和质疑",
+        "example": "真的假的？！"
+      },
+      {
+        "mark": "♡",
+        "meaning": "温柔、喜欢",
+        "example": "晚安♡"
+      },
+      {
+        "mark": "☆",
+        "meaning": "活泼、俏皮",
+        "example": "出发☆"
+      },
+      {
+        "mark": "♪",
+        "meaning": "轻快、愉悦",
+        "example": "今天心情不错♪"
+      },
+      {
+        "mark": "✧",
+        "meaning": "闪亮、兴奋",
+        "example": "好耶✧"
+      },
+      {
+        "mark": "…",
+        "meaning": "轻微停顿",
+        "example": "嗯…"
+      },
+      {
+        "mark": ">_<",
+        "meaning": "害羞、尴尬、难为情",
+        "example": "不要这样啦 >_<"
+      }
+    ]
+  },
+  "rules": {
+    "note": "表情库不应该直接变成一个随机选择器。建议增加一个独立的 Expression Decoration 层，在文字内容生成后，根据情绪、关系状态和表达意图决定是否添加表情。",
+    "emotion_mapping": [
+      {
+        "emotion": "joy",
+        "label": "开心",
+        "recommended": [
+          "😊",
+          "😄",
+          "(＾▽＾)"
+        ],
+        "discouraged": [
+          "😭"
+        ]
+      },
+      {
+        "emotion": "affection",
+        "label": "喜爱",
+        "recommended": [
+          "🥰",
+          "🩷",
+          "(´,,•ω•,,)♡"
+        ],
+        "discouraged": [
+          "🤬"
+        ]
+      },
+      {
+        "emotion": "excitement",
+        "label": "兴奋",
+        "recommended": [
+          "😆",
+          "🥳",
+          "(≧▽≦)"
+        ],
+        "discouraged": [
+          "😐"
+        ]
+      },
+      {
+        "emotion": "sadness",
+        "label": "悲伤",
+        "recommended": [
+          "😔",
+          "😢",
+          "(｡•́︿•̀｡)"
+        ],
+        "discouraged": [
+          "😜"
+        ]
+      },
+      {
+        "emotion": "anxiety",
+        "label": "焦虑",
+        "recommended": [
+          "😟",
+          "😥",
+          "(´･_･`)"
+        ],
+        "discouraged": [
+          "🥳"
+        ]
+      },
+      {
+        "emotion": "jealousy",
+        "label": "吃醋",
+        "recommended": [
+          "😒",
+          "😾",
+          "(｀ε´)"
+        ],
+        "discouraged": [
+          "🥰"
+        ],
+        "discouraged_note": "不符合语境时不用"
+      },
+      {
+        "emotion": "anger",
+        "label": "愤怒",
+        "recommended": [
+          "😠",
+          "😤",
+          "(｀へ´)"
+        ],
+        "discouraged": [
+          "😊"
+        ]
+      },
+      {
+        "emotion": "hurt",
+        "label": "受伤",
+        "recommended": [
+          "🥺",
+          "💔",
+          "(╥﹏╥)"
+        ],
+        "discouraged": [
+          "😂"
+        ]
+      },
+      {
+        "emotion": "comfort",
+        "label": "安心",
+        "recommended": [
+          "😌",
+          "🤗",
+          "(´▽｀)"
+        ],
+        "discouraged": [
+          "😡"
+        ]
+      },
+      {
+        "emotion": "playfulness",
+        "label": "调皮",
+        "recommended": [
+          "😉",
+          "😏",
+          "(¬‿¬)"
+        ],
+        "discouraged": [
+          "😢"
+        ]
+      }
+    ],
+    "frequency": {
+      "max_emoji_per_message": 2,
+      "max_kaomoji_per_message": 1,
+      "emoji_probability": {
+        "min": 0.15,
+        "max": 0.25
+      },
+      "kaomoji_probability": {
+        "min": 0.05,
+        "max": 0.1
+      },
+      "strong_emotion_probability": {
+        "min": 0.3,
+        "max": 0.45
+      },
+      "avoid_same_mark_on_consecutive_messages": true,
+      "serious_topic": "low",
+      "factual_answer": "low"
+    },
+    "persona_styles": [
+      {
+        "mbti": "ENFP",
+        "style": "活泼、丰富、俏皮，较常使用颜文字",
+        "emoji_rate": 0.25,
+        "kaomoji_rate": 0.12,
+        "max_intensity": "高",
+        "preferred_groups": [
+          "joy",
+          "playful",
+          "smile"
+        ]
+      },
+      {
+        "mbti": "ENFJ",
+        "style": "温暖、亲切，适当使用拥抱和爱心",
+        "emoji_rate": 0.18,
+        "kaomoji_rate": 0.06,
+        "max_intensity": "中高",
+        "preferred_groups": [
+          "affection",
+          "intimate"
+        ]
+      },
+      {
+        "mbti": "INFP",
+        "style": "细腻、含蓄，偏好温柔和感性的表情",
+        "emoji_rate": 0.12,
+        "kaomoji_rate": 0.05,
+        "max_intensity": "中",
+        "preferred_groups": [
+          "shy",
+          "affection",
+          "sadness"
+        ]
+      },
+      {
+        "mbti": "INFJ",
+        "style": "克制、温柔，更多使用低强度表情",
+        "emoji_rate": 0.08,
+        "kaomoji_rate": 0.03,
+        "max_intensity": "低",
+        "preferred_groups": [
+          "smile",
+          "tired"
+        ]
+      },
+      {
+        "mbti": "INTJ",
+        "style": "简洁、克制，较少使用表情",
+        "emoji_rate": 0.05,
+        "kaomoji_rate": 0.02,
+        "max_intensity": "低",
+        "preferred_groups": [
+          "smile",
+          "tired"
+        ]
+      },
+      {
+        "mbti": "INTP",
+        "style": "随意、幽默，偶尔使用反差感表情",
+        "emoji_rate": 0.1,
+        "kaomoji_rate": 0.06,
+        "max_intensity": "中",
+        "preferred_groups": [
+          "playful",
+          "confused"
+        ]
+      }
+    ]
+  }
+}
