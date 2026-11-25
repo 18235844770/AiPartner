@@ -1,0 +1,39 @@
+.panel {
+  border-radius: 22px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.panel + .panel,
+.stack > * + * {
+  margin-top: 14px;
+}
+
+.panel-body {
+  padding: 16px;
+}
+
+.kicker {
+  margin: 0 4px 8px;
+  color: #9a96a8;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.hint {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+}
+
+.page-error {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.page-note {
+  color: var(--color-primary-deep);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}

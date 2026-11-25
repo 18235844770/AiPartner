@@ -3,7 +3,14 @@ from typing import TypeVar
 from starlette.requests import Request
 from starlette.responses import Response
 
-DESKTOP_ORIGINS = frozenset({"http://127.0.0.1:5173", "http://localhost:5173"})
+DESKTOP_ORIGINS = frozenset(
+    {
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:5174",
+        "http://localhost:5174",
+    }
+)
 
 ResponseT = TypeVar("ResponseT", bound=Response)
 

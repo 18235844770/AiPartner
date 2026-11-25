@@ -1,0 +1,22 @@
+@use "./tokens";
+@use "./reset";
+@use "./animations";
+@use "./panels";
+
+body {
+  background: #e4ddf6;
+  color: var(--color-text-primary);
+  font-family: var(--font);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  min-height: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

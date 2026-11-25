@@ -57,6 +57,20 @@ def test_unhandled_error_response_includes_desktop_origin() -> None:
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
 
 
+def test_unhandled_error_response_includes_mobile_origin() -> None:
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/",
+            "headers": [(b"origin", b"http://127.0.0.1:5174")],
+            "query_string": b"",
+        }
+    )
+    response = apply_desktop_cors(request, JSONResponse({"code": "internal_error"}))
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5174"
+
+
 def test_unhandled_error_response_ignores_other_origins() -> None:
     request = Request(
         {
