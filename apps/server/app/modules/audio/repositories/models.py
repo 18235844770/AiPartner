@@ -67,7 +67,7 @@ class CompanionVoiceProfile(UUIDPrimaryKeyMixin, Base):
 
 
 class CompanionVoicePreset(Base):
-    """陪伴者当前选中的音色。没有记录时用目录默认音色；local 表示本地合成。"""
+    """陪伴者当前选中的云端音色。旧的 local 记录按目录默认音色处理。"""
 
     __tablename__ = "companion_voice_presets"
     __table_args__ = (

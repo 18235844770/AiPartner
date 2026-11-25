@@ -82,7 +82,7 @@ def test_decision_cue_never_enters_tts_instruction() -> None:
     assert "分享" not in result.tts_instruction
     assert "动机" not in result.tts_instruction
     assert "意图" not in result.tts_instruction
-    # instruct 必须是英文，避免 CosyVoice 朗读
+    # instruct 必须是英文，避免被朗读出来
     assert not any("\u4e00" <= ch <= "\u9fff" for ch in result.tts_instruction)
 
 

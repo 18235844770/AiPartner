@@ -231,8 +231,7 @@ async function confirmVoice(): Promise<void> {
         <div class="voice-toolbar">
           <label class="voice-toggle">
             音色
-            <select :value="presetId" :disabled="presetBusy" @change="onPresetChange">
-              <option value="">本地音色</option>
+            <select :value="presetId" :disabled="presetBusy || presets.length === 0" @change="onPresetChange">
               <option v-for="item in presets" :key="item.id" :value="item.id">
                 {{ item.provider_label }} · {{ item.name }}
               </option>

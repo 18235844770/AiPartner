@@ -1,7 +1,7 @@
 """Audio Expression：把 State / Persona 转为 TTS 内部契约。不写 Emotion State。
 
-CosyVoice3 的 instruct（<|endofprompt|> 之前）必须是短英文风格提示。
-中文决策摘要、情绪说明若写入 instruct，会被模型朗读进语音——绝对禁止。
+没有厂商专用指令时，风格提示保持短英文。
+中文决策摘要、情绪说明不得写入指令，避免被朗读进语音。
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ TTS_CONTRACT_VERSION = 5
 _LABEL_TO_KEY = {label: key for key, label in EMOTION_LABELS.items() if key in EMOTION_KEYS}
 _LABEL_TO_KEY["平静"] = "calm"
 
-# CosyVoice3 instruct：仅英文，避免被念出
+# 自由指令：仅英文，避免被念出
 _EN_DIRECTION: dict[str, str] = {
     "joy": "cheerful and light",
     "affection": "warm and gentle",
@@ -160,7 +160,7 @@ def build_audio_expression(data: AudioExpressionInput) -> AudioExpression:
     style = _style(primary_key, secondary_keys, band, persona)
     instruction = _instruction(primary_key, secondary_keys, band, effective, persona)
     pause = "short" if persona.pause_preference < 0.35 else "long" if persona.pause_preference > 0.65 else "natural"
-    # CosyVoice 默认偏小；过高增益再硬裁切会碎音。1.25 足够听清且少失真。
+    # 合成默认偏小；过高增益再硬裁切会碎音。1.25 足够听清且少失真。
     volume = 1.25
     return AudioExpression(
         primary_emotion=primary_key,
@@ -225,7 +225,7 @@ def _instruction(
     intensity: float,
     persona: VoiceExpressionProfile,
 ) -> str:
-    """生成 CosyVoice3 可用的短英文 instruct。禁止中文、禁止决策摘要。"""
+    """生成短英文风格提示，供云端音色使用。禁止中文、禁止决策摘要。"""
     if band == "none" or intensity <= 0:
         return "Speak naturally and calmly."
     tone = _EN_DIRECTION.get(primary, "natural")
@@ -242,5 +242,4 @@ def _instruction(
     else:
         bits.append("keep emotion moderate")
     # 注意：故意不读取 DecisionVoiceCues —— 决策内容不得进入语音
-    # <|endofprompt|> 由 audio_worker 统一追加，这里只产出英文风格正文
     return ". ".join(bits) + "."

@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.audio.domain.preset_voices import (
-    LOCAL_PRESET_ID,
     PresetVoice,
     get_preset,
     load_preset_catalog,
@@ -74,31 +73,22 @@ class PresetVoiceService:
         companion_id: uuid.UUID,
         preset_id: str | None,
     ) -> VoicePresetSelectionResponse:
-        preset = None
         if preset_id:
             preset = get_preset(preset_id)
             if preset is None:
                 raise NotFoundError("音色不存在")
+        else:
+            preset = resolve_stored_preset(None)
+            if preset is None:
+                raise NotFoundError("音色不存在")
         async with session.begin():
             await self._identity.get_owned_companion(session, user_id, companion_id)
-            if preset is None:
-                await self._presets.upsert(
-                    session,
-                    CompanionVoicePreset(
-                        companion_id=companion_id,
-                        preset_id=LOCAL_PRESET_ID,
-                        updated_at=datetime.now(UTC),
-                    ),
-                )
-            else:
-                await self._presets.upsert(
-                    session,
-                    CompanionVoicePreset(
-                        companion_id=companion_id,
-                        preset_id=preset.id,
-                        updated_at=datetime.now(UTC),
-                    ),
-                )
-        if preset is None:
-            return VoicePresetSelectionResponse(preset_id=None, preset=None)
+            await self._presets.upsert(
+                session,
+                CompanionVoicePreset(
+                    companion_id=companion_id,
+                    preset_id=preset.id,
+                    updated_at=datetime.now(UTC),
+                ),
+            )
         return VoicePresetSelectionResponse(preset_id=preset.id, preset=to_preset_response(preset))

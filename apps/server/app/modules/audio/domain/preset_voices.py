@@ -66,9 +66,9 @@ def default_preset() -> PresetVoice:
 
 
 def resolve_stored_preset(stored_id: str | None) -> PresetVoice | None:
-    """没有记录或记录已下线时用目录默认音色。显式 local 才走本地合成。"""
+    """没有记录、记录已下线，或仍标着已移除的本地合成时，用目录默认音色。"""
     if stored_id == LOCAL_PRESET_ID:
-        return None
+        stored_id = None
     if stored_id:
         found = get_preset(stored_id)
         if found is not None:

@@ -18,17 +18,11 @@ class WorkerSettings(BaseSettings):
     port: int = 8100
     # stub | sensevoice | auto
     asr_backend: str = "stub"
-    # stub | cosyvoice3 | auto
+    # 仅 stub。本地 CosyVoice 已移除，云端合成由请求里的 provider 决定。
     tts_backend: str = "stub"
     asr_model_name: str = "iic/SenseVoiceSmall"
-    tts_model_name: str = "Fun-CosyVoice3-0.5B-2512"
     model_dir: Path = Field(default=WORKER_ROOT / "models")
     output_dir: Path = Field(default=WORKER_ROOT / "outputs")
-    # CosyVoice 官方仓库本地路径（含 cosyvoice/ 与 third_party/Matcha-TTS）
-    cosyvoice_repo: Path = Field(default=WORKER_ROOT / "vendor" / "CosyVoice")
-    # 可选默认参考音频；空则使用仓库 asset/zero_shot_prompt.wav
-    tts_default_prompt_wav: Path | None = None
-    tts_fp16: bool = True
     max_queue_size: int = Field(default=8, ge=1)
     fish_api_key: str = ""
     volcengine_api_key: str = ""

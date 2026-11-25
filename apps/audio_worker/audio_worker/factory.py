@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 
 from audio_worker.backends.base import AsrBackend, TtsBackend
-from audio_worker.backends.cosyvoice import CosyVoiceTtsBackend, cosyvoice_available
 from audio_worker.backends.sensevoice import SenseVoiceAsrBackend, sensevoice_available
 from audio_worker.backends.stub import StubAsrBackend, StubTtsBackend
 from audio_worker.config import WorkerSettings
@@ -23,19 +22,8 @@ def build_asr_backend(settings: WorkerSettings) -> AsrBackend:
 
 
 def build_tts_backend(settings: WorkerSettings) -> TtsBackend:
+    """本地 CosyVoice 已移除。没有云端 provider 时只保留静音 stub。"""
     mode = settings.tts_backend.strip().lower()
-    if mode == "stub":
-        return StubTtsBackend(settings.output_dir)
-    repo = settings.cosyvoice_repo
-    if mode in {"cosyvoice3", "cosyvoice", "auto"} and cosyvoice_available(repo):
-        return CosyVoiceTtsBackend(
-            settings.tts_model_name,
-            settings.model_dir / "tts",
-            settings.output_dir,
-            repo_dir=repo,
-            default_prompt_wav=settings.tts_default_prompt_wav,
-            fp16=settings.tts_fp16,
-        )
-    if mode in {"cosyvoice3", "cosyvoice"}:
-        logger.warning("CosyVoice requested but repo/deps missing; using stub")
+    if mode not in {"", "stub"}:
+        logger.warning("本地语音合成已移除（请求的后端是 %s），改用 stub", mode)
     return StubTtsBackend(settings.output_dir)

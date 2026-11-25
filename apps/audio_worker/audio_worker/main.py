@@ -89,7 +89,7 @@ def create_app() -> FastAPI:
 
     @app.post("/v1/tts/stream")
     async def tts_synthesize_stream(body: TtsRequest):
-        """契约流：先完整合成，再按小 WAV 分块以 NDJSON 返回。真实 CosyVoice 流式可替换此实现。"""
+        """先完整合成，再按小 WAV 分块以 NDJSON 返回。"""
         from fastapi.responses import StreamingResponse
 
         from audio_worker.stream_chunks import iter_wav_ndjson

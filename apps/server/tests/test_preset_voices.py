@@ -27,7 +27,8 @@ def test_catalog_keeps_fish_volcengine_and_longanhuan() -> None:
     removed = resolve_stored_preset("volc-vivi-3")
     assert unset is not None and unset.id == "longanhuan-3"
     assert removed is not None and removed.id == "longanhuan-3"
-    assert resolve_stored_preset(LOCAL_PRESET_ID) is None
+    local = resolve_stored_preset(LOCAL_PRESET_ID)
+    assert local is not None and local.id == "longanhuan-3"
     assert by_id["fish-wang-sulong"].voice_id == "092d735394c64eefba2f966432c7526e"
     assert by_id["volc-xiaohe-3"].model == "doubao-seed-tts-3.0"
     assert by_id["longanhuan-3"].model == "cosyvoice-v3-plus"
