@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import long_dialogue_auto_test as base
 
-REPORT = base.LOG_DIR / "艺-ENFP-长对话自动化测试报告-第5轮.md"
+REPORT = base.LOG_DIR / "艺" / "艺-ENFP-长对话自动化测试报告-第5轮.md"
 
 SCRIPT: list[dict[str, str]] = [
     {"id": "late_hello", "content": "早啊", "note": "晚上打招呼，应点时间且一句说完"},

@@ -25,7 +25,7 @@ COMPANION_ID = "a7972764-155a-4b6b-919b-79eb2bcc27be"
 LOCAL_TZ = timezone(timedelta(hours=8))
 ROOT = Path(__file__).resolve().parents[3]
 LOG_DIR = ROOT / "log"
-REPORT = LOG_DIR / "艺-ENFP-长对话自动化测试报告-第4轮.md"
+REPORT = LOG_DIR / "艺" / "艺-ENFP-长对话自动化测试报告-第4轮.md"
 
 FALLBACK_MARK = "我暂时无法完成这次回复"
 ASSISTANT_MARKS = ("有什么可以帮", "需要我帮忙", "我是助手", "作为助手", "还有什么想聊")
@@ -229,7 +229,7 @@ def write_report(conversation_id: str, results: list[dict[str, object]], started
         if issues:
             lines.append(f"   - issues: {'; '.join(str(x) for x in issues)}")
         lines.append("")
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(lines), encoding="utf-8")
 
 

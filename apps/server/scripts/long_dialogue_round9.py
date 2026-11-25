@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import long_dialogue_auto_test as base
 from app.modules.persona.domain.expression_marks import load_expression_catalog
 
-REPORT = base.LOG_DIR / "艺-ENFP-长对话自动化测试报告-第9轮.md"
+REPORT = base.LOG_DIR / "艺" / "艺-ENFP-长对话自动化测试报告-第9轮.md"
 CATALOG = load_expression_catalog()
 
 SCRIPT: list[dict[str, str]] = [

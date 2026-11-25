@@ -14,7 +14,7 @@ import long_dialogue_auto_test as base
 from app.modules.dialogue.domain.message_burst import split_companion_messages
 from app.modules.persona.domain.expression_marks import load_expression_catalog
 
-REPORT = base.LOG_DIR / "艺-ENFP-长对话自动化测试报告-第10轮.md"
+REPORT = base.LOG_DIR / "艺" / "艺-ENFP-长对话自动化测试报告-第10轮.md"
 CATALOG = load_expression_catalog()
 
 SCRIPT: list[dict[str, str]] = [
