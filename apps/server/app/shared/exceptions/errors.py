@@ -15,3 +15,23 @@ class NotFoundError(AppError):
 class ConflictError(AppError):
     code = "conflict"
     status_code = 409
+
+
+class UnauthorizedError(AppError):
+    code = "unauthorized"
+    status_code = 401
+
+
+class ForbiddenError(AppError):
+    code = "forbidden"
+    status_code = 403
+
+
+class RateLimitError(AppError):
+    code = "rate_limited"
+    status_code = 429
+
+
+class UnavailableError(AppError):
+    code = "unavailable"
+    status_code = 503

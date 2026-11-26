@@ -34,6 +34,11 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint("status IN ('active', 'archived')", name="status"),
         CheckConstraint("next_sequence_number >= 1", name="next_sequence_number_positive"),
+        CheckConstraint("NOT is_managed OR status = 'active'", name="managed_is_active"),
+        Index(
+            "uq_conversations_managed_companion", "companion_id", unique=True,
+            postgresql_where=text("is_managed"),
+        ),
         CheckConstraint(
             "(status = 'archived' AND archived_at IS NOT NULL) OR (status <> 'archived' AND archived_at IS NULL)",
             name="archive_consistency",
@@ -49,6 +54,7 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     companion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     title: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_managed: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
     status: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
@@ -122,3 +128,22 @@ class Message(UUIDPrimaryKeyMixin, Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class ChatTurn(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "chat_turns"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["conversation_id", "trigger_sequence"], ["messages.conversation_id", "messages.sequence_number"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("conversation_id", "trigger_sequence"),
+        CheckConstraint("status IN ('pending', 'running', 'replied', 'quiet', 'failed')", name="status"),
+        Index("ix_chat_turns_status_created", "status", "created_at"),
+    )
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    trigger_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'pending'"))
+    decision_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    attempt: Mapped[int] = mapped_column(nullable=False, server_default=text("1"))

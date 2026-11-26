@@ -12,6 +12,8 @@ class MessageMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     delivery_group: uuid.UUID | None = None
+    turn_id: uuid.UUID | None = None
+    is_proactive: bool = False
 
 
 class CreateConversationRequest(BaseModel):

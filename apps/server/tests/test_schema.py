@@ -16,9 +16,11 @@ from app.shared.database.base import Base
 def test_core_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == {
         "users",
+        "auth_sessions",
         "companions",
         "conversations",
         "messages",
+        "chat_turns",
         "persona_profiles",
         "persona_versions",
         "memories",
@@ -35,6 +37,10 @@ def test_core_tables_are_registered() -> None:
         "model_configs",
         "model_call_logs",
         "background_tasks",
+        "audio_assets",
+        "audio_tasks",
+        "companion_voice_profiles",
+        "companion_voice_presets",
     }
 
 
@@ -49,7 +55,9 @@ def test_partial_indexes_match_the_design() -> None:
 
 def test_check_constraints_cover_status_archive_and_message_rules() -> None:
     sql = "\n".join(_check_sql(table) for table in (User, Companion, Conversation, Message))
-    assert "status = 'active'" in sql
+    assert "status IN ('active', 'deleting')" in sql
+    assert "(username IS NULL) = (password_hash IS NULL)" in sql
+    assert "initialization_status IN ('pending', 'ready', 'failed')" in sql
     assert "status IN ('active', 'paused', 'archived')" in sql
     assert "status IN ('active', 'archived')" in sql
     assert "archived_at IS NOT NULL" in sql

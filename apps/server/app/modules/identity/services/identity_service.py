@@ -126,7 +126,7 @@ class IdentityService:
     ) -> Companion:
         user = await self._users.get(session, user_id)
         companion = await self._companions.get(session, companion_id)
-        if user is None or companion is None or companion.owner_user_id != user.id:
+        if user is None or user.status != UserStatus.ACTIVE.value or companion is None or companion.owner_user_id != user.id:
             raise NotFoundError("Companion 不存在")
         return companion
 

@@ -9,6 +9,8 @@ from arq.cron import cron
 from arq.worker import func
 
 from app.config.settings import get_settings
+from app.modules.conversation.services.account_chat import AccountChatService
+from app.modules.identity.services.account_erasure import AccountErasureService
 from app.modules.infrastructure.domain.enums import BackgroundTaskType
 from app.modules.infrastructure.services.task_dispatcher import TaskDispatcher
 from app.modules.infrastructure.services.task_executor import TaskHandler, TaskExecutor
@@ -20,6 +22,9 @@ from app.modules.memory.services.relation import MemoryRelationService
 from app.modules.memory.services.summary import MemorySummaryService
 from app.modules.state.services.maintenance import StateMaintenanceService
 from app.modules.dialogue.services.proactive import ProactiveCheckService
+from app.shared.database.companion_lock import try_companion_lock
+from app.shared.database.session import get_session_factory
+from app.shared.exceptions.errors import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +159,20 @@ async def check_proactive_task(session: Any, task: Any) -> dict[str, object]:
         user_id = uuid.UUID(str(payload["user_id"]))
     except (KeyError, ValueError) as exc:
         raise ValueError("主动检查任务参数不正确") from exc
+    if get_settings().multi_user_enabled:
+        async with try_companion_lock(task.companion_id) as acquired:
+            if not acquired:
+                return {"checked": False, "sent": False, "reason": "companion_busy"}
+            async with get_session_factory()() as check_session:
+                try:
+                    waiting = await AccountChatService().has_waiting_turn(check_session, user_id, task.companion_id)
+                except NotFoundError:
+                    return {"checked": False, "sent": False, "reason": "account_unavailable"}
+                if waiting:
+                    return {"checked": False, "sent": False, "reason": "user_message_pending"}
+                return await ProactiveCheckService().check(
+                    check_session, user_id=user_id, companion_id=task.companion_id, task_id=task.id,
+                )
     return await ProactiveCheckService().check(
         session,
         user_id=user_id,
@@ -204,6 +223,16 @@ async def schedule_proactive_checks(ctx: dict[Any, Any]) -> None:
     logger.info("scheduled %s proactive checks", created)
 
 
+async def process_account_chat(ctx: dict[Any, Any]) -> None:
+    del ctx
+    await AccountChatService().process_waiting()
+
+
+async def erase_accounts(ctx: dict[Any, Any]) -> None:
+    del ctx
+    await AccountErasureService().process_waiting()
+
+
 class WorkerSettings:
     functions = [func(execute_background_task, name=JOB_NAME, max_tries=5)]
     cron_jobs = [
@@ -211,6 +240,9 @@ class WorkerSettings:
         cron(schedule_state_maintenance, minute={0, 15, 30, 45}, run_at_startup=True, max_tries=1),
         cron(schedule_proactive_checks, minute=set(range(0, 60, 5)), run_at_startup=True, max_tries=1),
     ]
+    if get_settings().multi_user_enabled:
+        cron_jobs.append(cron(process_account_chat, second=set(range(60)), max_tries=1, timeout=300))
+        cron_jobs.append(cron(erase_accounts, second={0, 30}, run_at_startup=True, max_tries=1))
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_jobs = 10
     job_timeout = 300

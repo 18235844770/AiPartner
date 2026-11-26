@@ -7,9 +7,11 @@ from typing import Protocol
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config.settings import get_settings
 from app.modules.infrastructure.api.schemas import TaskTransitionRequest
-from app.modules.infrastructure.domain.enums import BackgroundTaskStatus
+from app.modules.infrastructure.domain.enums import BackgroundTaskStatus, BackgroundTaskType
 from app.modules.infrastructure.domain.secrets import reject_secret_keys
+from app.modules.infrastructure.domain.task_locks import task_lock_keys
 from app.modules.infrastructure.repositories.infrastructure_repository import BackgroundTaskRepository
 from app.modules.infrastructure.repositories.models import BackgroundTask
 from app.modules.infrastructure.services.background_task_service import BackgroundTaskService
@@ -50,7 +52,7 @@ class TaskExecutor:
     ) -> BackgroundTask | None:
         engine = self._session_factory.kw["bind"]
         async with engine.connect() as connection:
-            hi, lo = _advisory_keys(task_id)
+            hi, lo = task_lock_keys(task_id)
             await connection.execute(text("SELECT pg_advisory_lock(:hi, :lo)"), {"hi": hi, "lo": lo})
             await connection.commit()
             session = AsyncSession(bind=connection, expire_on_commit=False)
@@ -91,11 +93,15 @@ class TaskExecutor:
                 self._fail(task, _MISSING_HANDLER)
                 return task
         try:
+            result = None
+            if task.task_type == BackgroundTaskType.PROACTIVE_CHECK.value and get_settings().multi_user_enabled:
+                result = _result_payload(await handler(session, task))
             async with session.begin():
                 task = await self._tasks.get(session, task_id)
                 if task is None or task.status != BackgroundTaskStatus.RUNNING.value or task.worker_id != worker_id:
                     return task
-                result = _result_payload(await handler(session, task))
+                if result is None:
+                    result = _result_payload(await handler(session, task))
                 locked = await self._tasks.lock(session, task_id)
                 if locked is None or locked.status != BackgroundTaskStatus.RUNNING.value or locked.worker_id != worker_id:
                     return locked
@@ -122,11 +128,6 @@ class TaskExecutor:
             TaskTransitionRequest(status=BackgroundTaskStatus.FAILED, error_message=cleaned),
             datetime.now(UTC),
         )
-
-
-def _advisory_keys(task_id: uuid.UUID) -> tuple[int, int]:
-    raw = task_id.bytes
-    return int.from_bytes(raw[:4], "big", signed=True), int.from_bytes(raw[4:8], "big", signed=True)
 
 
 def _result_payload(value: object) -> dict[str, object]:

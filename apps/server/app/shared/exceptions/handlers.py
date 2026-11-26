@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def _safe_validation_errors(exc: RequestValidationError) -> list[dict[str, object]]:
     safe_errors: list[dict[str, object]] = []
     for error in exc.errors():
-        item = {key: _safe_value(value) for key, value in error.items()}
+        item = {key: _safe_value(value) for key, value in error.items() if key not in {"input", "ctx"}}
         safe_errors.append(item)
     return safe_errors
 
@@ -50,7 +50,8 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(IntegrityError)
     async def handle_integrity_error(_request: Request, exc: IntegrityError) -> JSONResponse:
-        logger.warning("database integrity conflict: %s", exc.orig)
+        driver_error = getattr(exc.orig, "__cause__", None)
+        logger.warning("database integrity conflict: %s", getattr(driver_error, "constraint_name", None))
         return JSONResponse(
             status_code=409,
             content={"code": "conflict", "message": "数据约束冲突"},

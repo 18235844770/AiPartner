@@ -1,12 +1,15 @@
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from redis.exceptions import RedisError
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config.settings import get_settings
 from app.modules.infrastructure.api.schemas import TaskTransitionRequest
 from app.modules.infrastructure.domain.enums import BackgroundTaskStatus
+from app.modules.infrastructure.domain.task_locks import task_lock_keys
 from app.modules.infrastructure.repositories.infrastructure_repository import BackgroundTaskRepository
 from app.modules.infrastructure.services.background_task_service import BackgroundTaskService
 from app.modules.infrastructure.services.task_queue import TaskQueue
@@ -35,12 +38,36 @@ class TaskDispatcher:
         moment = now or datetime.now(UTC)
         async with self._session_factory() as session:
             async with session.begin():
+                if get_settings().multi_user_enabled:
+                    await self._recover_expired_proactive(session, moment, limit)
+                    await session.flush()
                 task_ids = await self._tasks.list_due_ids(session, moment, limit)
         delivered = 0
         for task_id in task_ids:
             if await self.dispatch_task(queue, task_id, now=moment):
                 delivered += 1
         return delivered
+
+    async def _recover_expired_proactive(self, session: AsyncSession, now: datetime, limit: int) -> None:
+        expired = await self._tasks.lock_expired_proactive(session, now - timedelta(minutes=6), limit)
+        for task in expired:
+            hi, lo = task_lock_keys(task.id)
+            if not await session.scalar(text("SELECT pg_try_advisory_xact_lock(:hi, :lo)"), {"hi": hi, "lo": lo}):
+                continue
+            if task.status == BackgroundTaskStatus.RUNNING.value:
+                self._records.apply_locked(task, TaskTransitionRequest(
+                    status=BackgroundTaskStatus.FAILED, error_message="主动沟通任务执行超时",
+                ), now)
+            else:
+                task.retry_count += 1
+                task.dispatched_at = None
+                task.updated_at = now
+                if task.retry_count <= task.max_retries:
+                    task.status = BackgroundTaskStatus.RETRYING.value
+                else:
+                    task.status = BackgroundTaskStatus.FAILED.value
+                    task.completed_at = now
+                    task.error_message = "主动沟通任务投递超时"
 
     async def dispatch_task(self, queue: TaskQueue, task_id: uuid.UUID, *, now: datetime | None = None) -> bool:
         return await self._deliver(queue, task_id, now or datetime.now(UTC))

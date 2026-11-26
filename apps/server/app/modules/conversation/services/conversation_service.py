@@ -17,7 +17,7 @@ from app.modules.conversation.repositories.conversation_repository import Conver
 from app.modules.conversation.repositories.message_repository import MessageRepository
 from app.modules.conversation.repositories.models import Conversation, Message
 from app.modules.identity.services.identity_service import IdentityService
-from app.shared.exceptions.errors import NotFoundError
+from app.shared.exceptions.errors import ConflictError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -265,6 +265,8 @@ class ConversationService:
                 data.client_message_id,
             )
             if existing is not None:
+                if existing.content != data.content or existing.sender_type != data.sender_type.value:
+                    raise ConflictError("消息标识已被用于不同内容")
                 return AppendMessageResult(existing, created=False)
         sequence_number = conversation.next_sequence_number
         now = datetime.now(UTC)
@@ -335,6 +337,38 @@ class ConversationService:
             return await self._list_messages(session, user_id, companion_id, conversation_id)
         async with session.begin():
             return await self._list_messages(session, user_id, companion_id, conversation_id)
+
+    async def get_managed_thread(
+        self, session: AsyncSession, user_id: uuid.UUID, companion_id: uuid.UUID,
+    ) -> Conversation:
+        await self._identity.get_owned_companion(session, user_id, companion_id)
+        thread = await self._conversations.get_active_for_companion(session, user_id, companion_id)
+        if thread is None or not thread.is_managed:
+            raise NotFoundError("会话不存在")
+        return thread
+
+    async def list_managed_messages(
+        self, session: AsyncSession, user_id: uuid.UUID, companion_id: uuid.UUID, limit: int,
+        before_sequence: int | None, after_sequence: int | None,
+    ) -> tuple[list[Message], bool]:
+        async with session.begin():
+            thread = await self.get_managed_thread(session, user_id, companion_id)
+            return await self._messages.list_page(session, thread.id, limit, before_sequence, after_sequence)
+
+    async def list_turn_context(
+        self, session: AsyncSession, user_id: uuid.UUID, companion_id: uuid.UUID,
+        conversation_id: uuid.UUID, through_user_sequence: int,
+    ) -> list[Message]:
+        async with session.begin():
+            await self._require_conversation(session, user_id, companion_id, conversation_id)
+            return await self._messages.list_turn_context(session, conversation_id, through_user_sequence, 60)
+
+    async def set_message_audio(
+        self, session: AsyncSession, user_id: uuid.UUID, companion_id: uuid.UUID, message_id: uuid.UUID, asset_id: uuid.UUID,
+    ) -> None:
+        async with session.begin():
+            message = await self._scoped_message(session, user_id, companion_id, message_id)
+            message.metadata_ = {**message.metadata_, "audio_asset_id": str(asset_id)}
 
     async def _list_messages(
         self,

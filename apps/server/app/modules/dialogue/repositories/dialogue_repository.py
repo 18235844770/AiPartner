@@ -1,12 +1,20 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.dialogue.repositories.models import DialogueDecision
 
 
 class DialogueRepository:
+    async def proactive_count(self, session: AsyncSession, companion_id: uuid.UUID, since: datetime) -> int:
+        count = await session.scalar(select(func.count()).select_from(DialogueDecision).where(
+            DialogueDecision.companion_id == companion_id, DialogueDecision.trigger_type == "proactive",
+            DialogueDecision.created_at >= since,
+        ))
+        return count or 0
+
     async def add(self, session: AsyncSession, decision: DialogueDecision) -> DialogueDecision:
         session.add(decision)
         await session.flush()
