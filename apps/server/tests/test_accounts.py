@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import aclosing
@@ -10,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.config.settings import get_settings
-from app.main import create_app
+from app.main import MOBILE_DIST, create_app
 from app.modules.conversation.api.account_router import _chat_frames, audio
 from app.modules.conversation.repositories.models import ChatTurn, Conversation, Message
 from app.modules.conversation.services.account_chat import AccountChatService
@@ -50,15 +51,22 @@ async def test_account_mode_requires_auth_and_hides_local_routes(account_client:
     assert (await account_client.get("/api/companion/me")).status_code == 401
     assert (await account_client.get("/api/chat/messages")).status_code == 401
     assert (await account_client.get("/api/chat/stream")).status_code == 401
+    assert (await account_client.get("/api/companion/persona")).status_code == 401
+    assert (await account_client.get("/api/companion/voice/presets")).status_code == 401
     assert (await account_client.post("/api/users", json={"display_name": "访客"})).status_code == 404
     assert (await account_client.post("/api/auth/logout")).status_code == 403
     assert (await account_client.post(
         "/api/auth/logout", headers={**MUTATION_HEADERS, "Sec-Fetch-Site": "cross-site"},
     )).status_code == 403
     mobile = await account_client.get("/mobile/")
-    assert mobile.status_code == 200
-    assert 'id="auth-form"' in mobile.text
-    assert (await account_client.get("/mobile/app.js")).status_code == 200
+    if (MOBILE_DIST / "index.html").is_file():
+        assert mobile.status_code == 200
+        assert 'id="app"' in mobile.text
+        bundle = re.search(r'src="(/mobile/assets/[^\"]+\.js)"', mobile.text)
+        assert bundle is not None
+        assert (await account_client.get(bundle.group(1))).status_code == 200
+    else:
+        assert mobile.status_code == 503
 
 
 async def test_account_validation_does_not_return_credentials(account_client: AsyncClient) -> None:
@@ -70,6 +78,14 @@ async def test_account_validation_does_not_return_credentials(account_client: As
     assert "secret" not in response.text
     assert "private" not in response.text
 
+    response = await account_client.post(
+        "/api/auth/register", headers=MUTATION_HEADERS,
+        json={"username": "password-mismatch", "password": "first-secret", "confirm_password": "second-secret"},
+    )
+    assert response.status_code == 422
+    assert "first-secret" not in response.text
+    assert "second-secret" not in response.text
+
 
 @pytest.mark.skipif(not os.environ.get("ACCOUNT_INTEGRATION_TESTS"), reason="requires migrated PostgreSQL and Redis")
 async def test_real_account_sessions_and_isolated_initialization(account_client: AsyncClient) -> None:
@@ -77,7 +93,7 @@ async def test_real_account_sessions_and_isolated_initialization(account_client:
     original_password = "account-test-password"
     username = f"test_{uuid.uuid4().hex}"
     credentials = {"username": username.upper(), "password": original_password}
-    form = {**credentials, "timezone": "Asia/Shanghai"}
+    form = {**credentials, "confirm_password": original_password, "timezone": "Asia/Shanghai"}
     async with AsyncClient(transport=transport, base_url="https://test") as other_device, AsyncClient(
         transport=transport, base_url="https://test",
     ) as other_account:
@@ -140,13 +156,32 @@ async def test_account_chat_recovers_and_erases_only_its_own_data(
     other_credentials = {**credentials, "username": f"test_{uuid.uuid4().hex}"}
     async with AsyncClient(transport=account_client._transport, base_url="https://test") as other:
         for client, login in ((account_client, credentials), (other, other_credentials)):
-            assert (await client.post("/api/auth/register", json=login, headers=MUTATION_HEADERS)).status_code == 202
+            assert (await client.post(
+                "/api/auth/register", json={**login, "confirm_password": login["password"]}, headers=MUTATION_HEADERS,
+            )).status_code == 202
             assert (await client.post("/api/auth/login", json=login, headers=MUTATION_HEADERS)).status_code == 204
 
         user_id = uuid.UUID((await account_client.get("/api/user/me")).json()["id"])
         companion_id = uuid.UUID((await account_client.get("/api/companion/me")).json()["id"])
         other_companion_id = uuid.UUID((await other.get("/api/companion/me")).json()["id"])
         assert other_companion_id != companion_id
+        stale_headers = {**MUTATION_HEADERS, "X-Companion-Account": str(user_id)}
+        assert (await other.get("/api/chat/messages", headers=stale_headers)).status_code == 401
+        assert (await other.post("/api/auth/logout", headers=stale_headers)).status_code == 401
+        assert (await other.get("/api/user/me")).status_code == 200
+        assert (await account_client.get("/api/companion/persona", headers=stale_headers)).status_code == 200
+        assert (await account_client.get("/api/companion/voice/preset", headers=stale_headers)).status_code == 200
+        initial_persona = (await account_client.get("/api/companion/persona")).json()["current_version"]
+        next_mbti = "ENFP" if initial_persona["mbti_type"] != "ENFP" else "INFP"
+        saved = await account_client.patch(
+            "/api/companion/me", json={"name": "本账号伴侣", "description": "仅本人可看", "mbti_type": next_mbti},
+            headers=stale_headers,
+        )
+        assert saved.status_code == 200 and saved.json()["name"] == "本账号伴侣"
+        updated = (await account_client.get("/api/companion/persona")).json()["current_version"]
+        assert updated["mbti_type"] == next_mbti
+        assert updated["version_number"] == initial_persona["version_number"] + 1
+        assert (await other.get("/api/companion/me")).json()["name"] != "本账号伴侣"
 
         first_body = {"client_message_id": str(uuid.uuid4()), "content": "账号 A 的消息"}
         repeated = await asyncio.gather(*(

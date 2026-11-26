@@ -1,11 +1,31 @@
 <script setup lang="ts">
+import { ref } from "vue";
+
 import AppButton from "@/components/common/AppButton.vue";
+import AppInput from "@/components/common/AppInput.vue";
 import SettingsDetail from "@/components/layout/SettingsDetail.vue";
-import { useClearChat } from "@/composables/useClearChat";
+import { errorText } from "@/services/http";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 const workspace = useWorkspaceStore();
-const { confirming, clearing, error, notice, ask, cancel, confirm } = useClearChat();
+const confirming = ref(false);
+const deleting = ref(false);
+const password = ref("");
+const error = ref("");
+
+function cancel(): void {
+  confirming.value = false;
+  password.value = error.value = "";
+}
+
+async function confirm(): Promise<void> {
+  if (!password.value || deleting.value) return;
+  deleting.value = true;
+  error.value = "";
+  try { await workspace.deleteAccount(password.value); }
+  catch (caught) { error.value = errorText(caught); }
+  finally { deleting.value = false; }
+}
 
 function formatJoined(value: string | undefined): string {
   if (!value) {
@@ -31,8 +51,8 @@ function formatJoined(value: string | undefined): string {
         <strong>{{ workspace.user?.timezone || "—" }}</strong>
       </div>
       <div class="row">
-        <span>语言</span>
-        <strong>{{ workspace.user?.locale || "—" }}</strong>
+        <span>用户名</span>
+        <strong>{{ workspace.user?.username || "—" }}</strong>
       </div>
       <div v-if="formatJoined(workspace.user?.created_at)" class="row">
         <span>开始使用</span>
@@ -40,14 +60,16 @@ function formatJoined(value: string | undefined): string {
       </div>
     </section>
     <section class="panel panel-body">
-      <p class="hint">清空只会删掉这段聊天记录。记忆、情绪和关系仍由陪伴者自己维护。</p>
-      <p v-if="error" class="page-error">{{ error }}</p>
-      <p v-else-if="notice" class="page-note">{{ notice }}</p>
-      <div v-if="confirming" class="actions">
-        <AppButton variant="secondary" :disabled="clearing" @click="cancel">留下</AppButton>
-        <AppButton variant="danger" :loading="clearing" @click="confirm">确认清空</AppButton>
-      </div>
-      <AppButton v-else variant="danger" @click="ask">清空聊天记录</AppButton>
+      <p class="hint">注销后将删除账号、伴侣和聊天记录。</p>
+      <form v-if="confirming" class="stack" @submit.prevent="confirm">
+        <AppInput v-model="password" type="password" autocomplete="current-password" placeholder="确认密码" :disabled="deleting" />
+        <p v-if="error" class="page-error" role="alert">{{ error }}</p>
+        <div class="actions">
+          <AppButton variant="secondary" :disabled="deleting" @click="cancel">取消</AppButton>
+          <AppButton type="submit" variant="danger" :disabled="!password" :loading="deleting">确认注销</AppButton>
+        </div>
+      </form>
+      <AppButton v-else variant="danger" @click="confirming = true">注销账号</AppButton>
     </section>
   </SettingsDetail>
 </template>

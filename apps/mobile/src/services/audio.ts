@@ -1,6 +1,4 @@
-import { apiBaseUrl } from "./api";
-import type { ConversationScope } from "./conversations";
-import { requestJson } from "./http";
+import { accountJson } from "./account";
 
 export type VoicePreset = {
   id: string;
@@ -26,24 +24,20 @@ export type AudioHealth = {
   };
 };
 
-function audioUrl(path: string): string {
-  return `${apiBaseUrl()}/api/audio${path}`;
-}
-
 export function fetchAudioHealth(): Promise<AudioHealth> {
-  return requestJson<AudioHealth>(audioUrl("/health"));
+  return accountJson("/companion/voice/health");
 }
 
 export function listVoicePresets(): Promise<VoicePreset[]> {
-  return requestJson<VoicePreset[]>(audioUrl("/voice-presets"));
+  return accountJson("/companion/voice/presets");
 }
 
-export function getVoicePreset(scope: ConversationScope): Promise<VoicePresetSelection> {
-  return requestJson<VoicePresetSelection>(audioUrl(`/users/${scope.userId}/companions/${scope.companionId}/voice-preset`));
+export function getVoicePreset(): Promise<VoicePresetSelection> {
+  return accountJson("/companion/voice/preset");
 }
 
-export function setVoicePreset(scope: ConversationScope, presetId: string): Promise<VoicePresetSelection> {
-  return requestJson<VoicePresetSelection>(audioUrl(`/users/${scope.userId}/companions/${scope.companionId}/voice-preset`), {
+export function setVoicePreset(presetId: string): Promise<VoicePresetSelection> {
+  return accountJson("/companion/voice/preset", {
     method: "PUT",
     body: JSON.stringify({ preset_id: presetId }),
   });

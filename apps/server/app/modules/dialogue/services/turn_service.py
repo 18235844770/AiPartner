@@ -54,6 +54,7 @@ from app.modules.dialogue.domain.suggestion import (
 from app.modules.dialogue.domain.turn_state import plan_turn_state
 from app.modules.dialogue.repositories.models import DialogueDecision
 from app.modules.dialogue.services.dialogue_service import DialogueService
+from app.modules.identity.services.identity_service import IdentityService
 from app.modules.infrastructure.api.schemas import CreateBackgroundTaskRequest
 from app.modules.infrastructure.domain.enums import BackgroundTaskType, ModelConfigKey
 from app.modules.infrastructure.services.background_task_service import BackgroundTaskService
@@ -905,6 +906,10 @@ class DialogueTurnService:
         through_user_sequence: int | None = None,
     ) -> TurnContext:
         _profile, version = await self._personas.get_current(session, user_id, companion_id)
+        core_traits = dict(version.core_traits)
+        if through_user_sequence is not None:
+            companion = await IdentityService().get_owned_companion(session, user_id, companion_id)
+            core_traits["companion_name"] = companion.name
         state = await self._states.get_current(session, user_id, companion_id)
         emotion = EmotionState.model_validate(state.emotion)
         relationship = RelationshipState.model_validate(state.relationship)
@@ -928,7 +933,7 @@ class DialogueTurnService:
         working_version = None if working is None else working.get("version")
         return TurnContext(
             mbti_type=version.mbti_type,
-            core_traits=dict(version.core_traits),
+            core_traits=core_traits,
             communication_preferences=dict(version.communication_preferences),
             emotion_primary=emotion.primary,
             emotion_cause=emotion.cause_summary,

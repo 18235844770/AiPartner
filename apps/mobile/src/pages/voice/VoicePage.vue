@@ -32,7 +32,7 @@ watch(
     }
     loading.value = true;
     error.value = "";
-    void Promise.all([listVoicePresets(), getVoicePreset(scope)])
+    void Promise.all([listVoicePresets(), getVoicePreset()])
       .then(([catalog, selection]) => {
         presets.value = catalog;
         selectedId.value = selection.preset_id ?? selection.preset?.id ?? "";
@@ -63,7 +63,7 @@ async function choose(preset: VoicePreset): Promise<void> {
   savingId.value = preset.id;
   error.value = "";
   try {
-    const selection = await setVoicePreset(scope, preset.id);
+    const selection = await setVoicePreset(preset.id);
     selectedId.value = selection.preset_id ?? preset.id;
   } catch (caught) {
     selectedId.value = previous;

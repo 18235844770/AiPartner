@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -26,6 +26,7 @@ from app.shared.database.session import dispose_engine
 from app.shared.exceptions.handlers import register_exception_handlers
 
 logger = logging.getLogger(__name__)
+MOBILE_DIST = Path(__file__).resolve().parents[2] / "mobile" / "dist"
 
 
 @asynccontextmanager
@@ -48,7 +49,12 @@ def create_app() -> FastAPI:
     if settings.multi_user_enabled:
         app.include_router(account_router, prefix="/api")
         app.include_router(account_chat_router, prefix="/api")
-        app.mount("/mobile", StaticFiles(directory=Path(__file__).resolve().parents[2] / "mobile", html=True), name="mobile")
+        if (MOBILE_DIST / "index.html").is_file():
+            app.mount("/mobile", StaticFiles(directory=MOBILE_DIST, html=True), name="mobile")
+        else:
+            @app.get("/mobile/", include_in_schema=False)
+            async def mobile_build_required() -> None:
+                raise HTTPException(status_code=503, detail="Build apps/mobile before serving /mobile/.")
     else:
         for router in (
             identity_router, conversation_router, persona_router, memory_router, memory_context_router, state_router,

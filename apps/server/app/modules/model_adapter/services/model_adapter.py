@@ -15,7 +15,7 @@ from app.modules.infrastructure.api.schemas import RecordModelCallRequest
 from app.modules.infrastructure.domain.enums import CONFIG_TASK_TYPES, ModelCallStatus, ModelConfigKey, ModelProvider
 from app.modules.infrastructure.repositories.infrastructure_repository import ModelConfigRepository
 from app.modules.infrastructure.services.model_call_log_service import CallDetail, ModelCallLogService
-from app.modules.model_adapter.domain.embedding import EMBEDDING_DIMENSIONS, EmbeddingResult, TextEmbedder
+from app.modules.model_adapter.domain.embedding import EMBEDDING_DIMENSIONS, LOCAL_EMBEDDING_MODEL, EmbeddingResult, TextEmbedder
 from app.modules.model_adapter.domain.errors import (
     ModelAdapterError,
     ModelCapabilityError,
@@ -42,6 +42,7 @@ class ModelCallScope(BaseModel):
     conversation_id: uuid.UUID | None = None
     dialogue_decision_id: uuid.UUID | None = None
     background_task_id: uuid.UUID | None = None
+    embedding_query: bool = False
     context_versions: dict[str, str] = Field(default_factory=dict)
 
 
@@ -243,8 +244,11 @@ class ModelAdapter:
             )
             raise ModelCapabilityError("Embedding 模型名称过长")
         backend = self._embedder or _default_embedder()
+        inputs = cleaned
+        if model_name == LOCAL_EMBEDDING_MODEL and scope.embedding_query:
+            inputs = [f"Instruct: Retrieve memories relevant to this conversation.\nQuery:{text}" for text in cleaned]
         try:
-            vectors = await backend.embed(model_name, cleaned)
+            vectors = await backend.embed(model_name, inputs)
         except ModelAdapterError as exc:
             await self._log_exception(config, task, scope, exc, started, created_at, embedding_attempt)
             raise

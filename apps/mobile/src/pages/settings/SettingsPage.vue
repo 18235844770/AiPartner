@@ -1,12 +1,15 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import { useRouter } from "vue-router";
 
 import { assets } from "@/assets/slices";
 import Avatar from "@/components/avatar/Avatar.vue";
+import AppButton from "@/components/common/AppButton.vue";
 import AppTabBar from "@/components/layout/AppTabBar.vue";
 import ScreenFrame from "@/components/layout/ScreenFrame.vue";
 import { useDialogueStore } from "@/stores/dialogue";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { errorText } from "@/services/http";
 
 interface SettingsItem {
   id: string;
@@ -24,6 +27,16 @@ interface SettingsSection {
 const router = useRouter();
 const workspace = useWorkspaceStore();
 const dialogue = useDialogueStore();
+const signingOut = ref(false);
+const logoutError = ref("");
+
+async function signOut(): Promise<void> {
+  signingOut.value = true;
+  logoutError.value = "";
+  try { await workspace.signOut(); }
+  catch (caught) { logoutError.value = errorText(caught); }
+  finally { signingOut.value = false; }
+}
 
 const sections: SettingsSection[] = [
   {
@@ -94,6 +107,10 @@ const sections: SettingsSection[] = [
               <img class="chevron" :src="assets.chevron" alt="" />
             </button>
           </div>
+        </section>
+        <section class="group">
+          <p v-if="logoutError" class="page-error" role="alert">{{ logoutError }}</p>
+          <AppButton variant="secondary" :loading="signingOut" @click="signOut">退出登录</AppButton>
         </section>
       </div>
       <AppTabBar />

@@ -11,6 +11,8 @@ from redis.exceptions import RedisError
 
 from app.config.settings import get_settings
 from app.modules.audio.services.audio_manager import AudioManager
+from app.modules.audio.domain.schemas import AudioHealthResponse, VoicePresetResponse, VoicePresetSelectionRequest, VoicePresetSelectionResponse
+from app.modules.audio.services.preset_voice_service import PresetVoiceService
 from app.modules.conversation.api.router import to_message_response
 from app.modules.conversation.api.schemas import MessageResponse
 from app.modules.conversation.repositories.models import ChatTurn, Message
@@ -29,6 +31,7 @@ conversations = ConversationService()
 states = StateService()
 chat = AccountChatService()
 audio = AudioManager()
+voice_presets = PresetVoiceService()
 MAX_SEQUENCE = 2**63 - 1
 
 
@@ -73,6 +76,32 @@ class SendMessageResponse(BaseModel):
 class MessageAudio(BaseModel):
     message_id: uuid.UUID
     audio_url: str
+
+
+@router.get("/companion/voice/health", response_model=AudioHealthResponse)
+async def get_voice_health(account: Account) -> AudioHealthResponse:
+    return await audio.health()
+
+
+@router.get("/companion/voice/presets", response_model=list[VoicePresetResponse])
+async def list_voice_presets(account: Account) -> list[VoicePresetResponse]:
+    return voice_presets.list_catalog()
+
+
+@router.get("/companion/voice/preset", response_model=VoicePresetSelectionResponse)
+async def get_voice_preset(response: Response, account: Account, session: DatabaseSession) -> VoicePresetSelectionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    companion = await setup.get_ready(session, account.user_id)
+    return await voice_presets.get_selection(session, account.user_id, companion.id)
+
+
+@router.put("/companion/voice/preset", response_model=VoicePresetSelectionResponse, dependencies=Mutation)
+async def set_voice_preset(
+    body: VoicePresetSelectionRequest, response: Response, account: Account, session: DatabaseSession,
+) -> VoicePresetSelectionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    companion = await setup.get_ready(session, account.user_id)
+    return await voice_presets.set_selection(session, account.user_id, companion.id, body.preset_id)
 
 
 def _turn_status(turn: ChatTurn) -> ChatTurnStatus:

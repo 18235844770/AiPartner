@@ -22,6 +22,10 @@ class UnauthorizedError(AppError):
     status_code = 401
 
 
+class CredentialsRejectedError(UnauthorizedError):
+    code = "credentials_rejected"
+
+
 class ForbiddenError(AppError):
     code = "forbidden"
     status_code = 403

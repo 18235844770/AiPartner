@@ -5,6 +5,7 @@ __pycache__/
 .ruff_cache/
 *.pyc
 .env
+.env.beta
 node_modules/
 dist/
 dist-electron/

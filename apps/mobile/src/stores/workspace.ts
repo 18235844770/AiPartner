@@ -1,169 +1,117 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
-import { fetchHealth } from "@/services/api";
+import {
+  accountFetch, accountJson, authAction, bindAccount, restoreAccount,
+  type AccountProfile, type Credentials, type ManagedCompanion,
+} from "@/services/account";
 import { ApiError, errorText } from "@/services/http";
-import {
-  createCompanion,
-  createUser,
-  getUser,
-  initializeCompanionBasics,
-  listCompanions,
-  updateCompanion,
-} from "@/services/identity";
-import type { CompanionResponse, UpdateCompanionRequest, UserResponse } from "@/types/api";
-import {
-  clearWorkspace,
-  readEnvWorkspaceOverride,
-  readWorkspace,
-  writeWorkspace,
-} from "@/services/workspace-storage";
-
-export type WorkspacePhase = "loading" | "ready" | "unavailable";
-
-const DEFAULT_COMPANION_NAME = "遇见";
-
-let ensureTask: Promise<void> | null = null;
 
 export const useWorkspaceStore = defineStore("workspace", () => {
-  const phase = ref<WorkspacePhase>("loading");
-  const user = ref<UserResponse | null>(null);
-  const companion = ref<CompanionResponse | null>(null);
+  const phase = ref<"loading" | "signed-out" | "setup" | "ready" | "unavailable">("loading");
+  const user = ref<AccountProfile | null>(null);
+  const companion = ref<ManagedCompanion | null>(null);
   const error = ref("");
+  const customizeAfterRegistration = ref(false);
+  let controller = new AbortController();
+  let restoreTask: Promise<void> | undefined;
 
-  const scope = computed(() => {
-    if (!user.value || !companion.value) {
-      return null;
-    }
-    return { userId: user.value.id, companionId: companion.value.id };
-  });
+  const scope = computed(() => phase.value === "ready" && user.value && companion.value
+    ? { userId: user.value.id, companionId: companion.value.id } : null);
+  const presence = computed(() => phase.value === "ready" ? "在线" : "连接中");
 
-  const presence = computed(() => {
-    if (phase.value === "loading") {
-      return "连接中";
-    }
-    if (phase.value === "unavailable" || companion.value?.status === "paused") {
-      return "未连接";
-    }
-    return "在线";
-  });
-
-  function remember(userId: string, companionId: string | null): void {
-    writeWorkspace({ userId, companionId });
+  function reset(): void {
+    controller.abort();
+    controller = new AbortController();
+    restoreTask = undefined;
+    user.value = null;
+    companion.value = null;
+    customizeAfterRegistration.value = false;
+    error.value = "";
+    phase.value = "signed-out";
+    try { localStorage.removeItem("ai-companion.mobile.workspace"); } catch { /* local storage may be disabled */ }
   }
 
-  function chooseCompanion(items: CompanionResponse[], preferredId: string | null): CompanionResponse | null {
-    const active = items.filter((item) => item.status !== "archived");
-    const pool = active.length > 0 ? active : items;
-    return (
-      pool.find((item) => item.id === preferredId) ??
-      pool.find((item) => item.is_default) ??
-      pool[0] ??
-      null
-    );
+  async function checkCompanion(): Promise<void> {
+    const signal = controller.signal;
+    const current = await accountJson<ManagedCompanion>("/companion/me");
+    if (signal.aborted) return;
+    error.value = "";
+    companion.value = current;
+    phase.value = current.initialization_status === "ready" ? "ready" : "setup";
   }
 
-  async function createDefault(): Promise<void> {
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
-    const createdUser = await createUser({
-      display_name: "我",
-      timezone,
-      locale: "zh-CN",
-    });
-    user.value = createdUser;
-    remember(createdUser.id, null);
-    const items = await listCompanions(createdUser.id);
-    const existing = chooseCompanion(items, null);
-    const created =
-      existing ??
-      (await createCompanion(createdUser.id, {
-        name: DEFAULT_COMPANION_NAME,
-        description: null,
-        is_default: true,
-      }));
-    await initializeCompanionBasics(createdUser.id, created.id);
-    companion.value = created;
-    remember(createdUser.id, created.id);
-  }
-
-  async function ensure(): Promise<void> {
-    if (phase.value === "ready" && user.value && companion.value) {
-      return;
+  async function loadSession(signal: AbortSignal, registered = false): Promise<void> {
+    try {
+      const profile = await restoreAccount(signal);
+      if (signal.aborted) return;
+      bindAccount(profile.id, signal, reset);
+      user.value = profile;
+      if (registered) sessionStorage.setItem("companion.registration-setup", profile.id);
+      customizeAfterRegistration.value = sessionStorage.getItem("companion.registration-setup") === profile.id;
+      await checkCompanion();
+    } catch (caught) {
+      if (signal.aborted) return;
+      if (caught instanceof ApiError && caught.status === 401) reset();
+      else {
+        error.value = errorText(caught);
+        phase.value = "unavailable";
+      }
     }
-    ensureTask ??= runEnsure().finally(() => {
-      ensureTask = null;
-    });
-    return ensureTask;
   }
 
-  async function runEnsure(): Promise<void> {
+  function ensure(): Promise<void> {
+    if (phase.value !== "loading") return Promise.resolve();
+    restoreTask ??= loadSession(controller.signal);
+    return restoreTask;
+  }
+
+  async function retryConnection(): Promise<void> {
     phase.value = "loading";
     error.value = "";
-    try {
-      await fetchHealth();
-    } catch (caught) {
-      error.value = errorText(caught);
-      phase.value = "unavailable";
-      return;
-    }
-
-    const stored = readWorkspace();
-    const override = readEnvWorkspaceOverride();
-    try {
-      if (stored) {
-        try {
-          user.value = await getUser(stored.userId);
-          const items = await listCompanions(stored.userId);
-          const selected = chooseCompanion(items, stored.companionId);
-          if (selected) {
-            await initializeCompanionBasics(stored.userId, selected.id);
-            companion.value = selected;
-            remember(stored.userId, selected.id);
-            phase.value = "ready";
-            return;
-          }
-          const created = await createCompanion(stored.userId, {
-            name: DEFAULT_COMPANION_NAME,
-            description: null,
-            is_default: true,
-          });
-          await initializeCompanionBasics(stored.userId, created.id);
-          companion.value = created;
-          remember(stored.userId, created.id);
-          phase.value = "ready";
-          return;
-        } catch (caught) {
-          if (!(caught instanceof ApiError) || caught.status !== 404) {
-            throw caught;
-          }
-          if (override) {
-            error.value = "指定的用户不存在";
-            phase.value = "unavailable";
-            return;
-          }
-          clearWorkspace();
-          user.value = null;
-          companion.value = null;
-        }
-      }
-      await createDefault();
-      phase.value = "ready";
-    } catch (caught) {
-      error.value = errorText(caught);
-      phase.value = "unavailable";
-    }
+    restoreTask = undefined;
+    await ensure();
   }
 
-  async function saveCompanion(body: UpdateCompanionRequest): Promise<CompanionResponse> {
-    const currentUser = user.value;
-    const currentCompanion = companion.value;
-    if (!currentUser || !currentCompanion) {
-      throw new ApiError("还没有连上陪伴者", 0, "workspace_missing");
+  async function signIn(credentials: Credentials, confirmation?: string): Promise<void> {
+    const signal = controller.signal;
+    if (confirmation !== undefined) {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      await authAction("register", signal, { ...credentials, confirm_password: confirmation, timezone });
     }
-    const updated = await updateCompanion(currentUser.id, currentCompanion.id, body);
-    companion.value = updated;
-    return updated;
+    await authAction("login", signal, credentials);
+    await loadSession(signal, confirmation !== undefined);
   }
 
-  return { phase, user, companion, error, presence, scope, ensure, saveCompanion };
+  function finishRegistrationSetup(): void {
+    sessionStorage.removeItem("companion.registration-setup");
+    customizeAfterRegistration.value = false;
+  }
+
+  async function signOut(): Promise<void> {
+    await accountFetch("/auth/logout", { method: "POST" });
+    reset();
+  }
+
+  async function retrySetup(): Promise<void> {
+    await accountFetch("/companion/me/retry", { method: "POST" });
+    await checkCompanion();
+  }
+
+  async function saveCompanion(body: { name: string; description?: string; mbti_type?: string }): Promise<void> {
+    const signal = controller.signal;
+    const updated = await accountJson<ManagedCompanion>("/companion/me", { method: "PATCH", body: JSON.stringify(body) });
+    if (!signal.aborted) companion.value = updated;
+  }
+
+  async function deleteAccount(password: string): Promise<void> {
+    await accountFetch("/user/me", { method: "DELETE", body: JSON.stringify({ password }) });
+    reset();
+  }
+
+  return {
+    phase, user, companion, error, presence, scope, ensure, signIn, signOut, checkCompanion,
+    customizeAfterRegistration, finishRegistrationSetup,
+    retryConnection, retrySetup, saveCompanion, deleteAccount,
+  };
 });

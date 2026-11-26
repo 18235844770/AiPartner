@@ -5,4 +5,5 @@ export interface ChatMessageItem {
   role: MessageRole;
   text: string;
   status: string;
+  retryTurnId?: string;
 }

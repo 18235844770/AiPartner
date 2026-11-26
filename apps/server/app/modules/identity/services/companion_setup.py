@@ -10,6 +10,7 @@ from app.modules.identity.repositories.auth_repository import AuthRepository
 from app.modules.identity.repositories.companion_repository import CompanionRepository
 from app.modules.identity.repositories.models import Companion
 from app.modules.persona.api.schemas import InitializePersonaRequest
+from app.modules.persona.domain.enums import MbtiType
 from app.modules.persona.services.persona_service import PersonaService
 from app.modules.state.services.state_service import StateService
 from app.shared.database.session import get_session_factory
@@ -46,6 +47,21 @@ class CompanionSetupService:
         for companion in due:
             companion.next_review_at = now + timedelta(minutes=5)
         return [(companion.id, companion.owner_user_id) for companion in due]
+
+    async def update_profile(
+        self, session: AsyncSession, user_id: uuid.UUID, name: str,
+        description: str | None, update_description: bool, mbti_type: MbtiType | None,
+    ) -> Companion:
+        async with session.begin():
+            companion = await self._require_companion(session, user_id, lock=True)
+            if companion.initialization_status != "ready":
+                raise ConflictError("伴侣仍在初始化")
+            if mbti_type is not None:
+                await self._personas.select_template(session, user_id, companion.id, mbti_type)
+            companion.name = name
+            if update_description:
+                companion.description = description or None
+            return companion
 
     async def initialize(self, user_id: uuid.UUID) -> None:
         async with get_session_factory()() as session:

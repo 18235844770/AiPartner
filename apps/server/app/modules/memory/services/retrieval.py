@@ -174,7 +174,7 @@ class MemoryRetrievalService:
             result = await self._query_embedder().embed(
                 ModelConfigKey.EMBEDDING,
                 [query],
-                ModelCallScope(trace_id=uuid.uuid4(), user_id=user_id, companion_id=companion_id),
+                ModelCallScope(trace_id=uuid.uuid4(), user_id=user_id, companion_id=companion_id, embedding_query=True),
             )
         except (ModelAdapterError, NotFoundError):
             logger.warning("query embedding unavailable; keyword, time and relation retrieval continue")

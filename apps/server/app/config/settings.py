@@ -4,6 +4,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.modules.model_adapter.domain.embedding import LOCAL_EMBEDDING_MODEL
+
 SERVER_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -25,7 +27,7 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_timeout_seconds: float = Field(default=60, gt=0)
     deepseek_max_retries: int = Field(default=1, ge=0)
-    embedding_model_name: str = Field(default="BAAI/bge-m3", min_length=1, max_length=64)
+    embedding_model_name: str = Field(default=LOCAL_EMBEDDING_MODEL, min_length=1, max_length=64)
     audio_worker_url: str = Field(default="http://127.0.0.1:8100", min_length=1)
     audio_worker_timeout_seconds: float = Field(default=120, gt=0)
     asr_model_name: str = Field(default="FunAudioLLM/SenseVoiceSmall", min_length=1, max_length=128)

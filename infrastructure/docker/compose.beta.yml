@@ -1,0 +1,108 @@
+x-app: &app
+  image: ${BETA_APP_IMAGE:-aipartner-beta:local}
+  build:
+    context: ../..
+    dockerfile: infrastructure/docker/Beta.Dockerfile
+  environment:
+    APP_ENV: production
+    ACCOUNT_MODE: 'true'
+    DATABASE_URL: postgresql+asyncpg://companion:${BETA_DB_PASSWORD:?Set BETA_DB_PASSWORD}@postgres:5432/companion
+    REDIS_URL: redis://redis:6379/0
+    DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?Set DEEPSEEK_API_KEY}
+    DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+    DEEPSEEK_DECISION_MODEL: ${DEEPSEEK_DECISION_MODEL:-deepseek-v4-pro}
+    DEEPSEEK_CONVERSATION_MODEL: ${DEEPSEEK_CONVERSATION_MODEL:-deepseek-flash}
+    DEEPSEEK_MEMORY_MODEL: ${DEEPSEEK_MEMORY_MODEL:-deepseek-flash}
+    PROACTIVE_DAILY_BUDGET: ${PROACTIVE_DAILY_BUDGET:-0}
+    AUDIO_STORAGE_DIR: /data/audio
+    FASTEMBED_CACHE_PATH: /data/embedding
+  volumes:
+    - audio:/data/audio
+    - embedding:/data/embedding
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: companion
+      POSTGRES_USER: companion
+      POSTGRES_PASSWORD: ${BETA_DB_PASSWORD:?Set BETA_DB_PASSWORD}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -U, companion, -d, companion]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: [redis-server, --appendonly, 'yes']
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  init:
+    <<: *app
+    command: [sh, -ec, 'alembic upgrade head && python scripts/init_model_configs.py --beta']
+    depends_on:
+      postgres:
+        condition: service_healthy
+  api:
+    <<: *app
+    restart: unless-stopped
+    command: [uvicorn, 'app.main:app', --host, 0.0.0.0, --port, '8000', --forwarded-allow-ips, '*']
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, 'import json,urllib.request; raise SystemExit(json.load(urllib.request.urlopen("http://127.0.0.1:8000/health",timeout=4))["status"] != "ok")']
+      interval: 10s
+      timeout: 6s
+      retries: 12
+  worker:
+    <<: *app
+    restart: unless-stopped
+    stop_grace_period: 90s
+    command: [arq, app.modules.infrastructure.worker.WorkerSettings]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, arq, --check, app.modules.infrastructure.worker.WorkerSettings]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      BETA_SITE_ADDRESS: ${BETA_SITE_ADDRESS:-localhost}
+      BETA_INVITE_USER: ${BETA_INVITE_USER:-tester}
+      BETA_INVITE_HASH: ${BETA_INVITE_HASH:?Set BETA_INVITE_HASH}
+    ports:
+      - '${BETA_BIND_HOST:-127.0.0.1}:${BETA_HTTP_PORT:-80}:80'
+      - '${BETA_BIND_HOST:-127.0.0.1}:${BETA_HTTPS_PORT:-443}:443'
+    volumes:
+      - ./Caddyfile.beta:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres:
+  redis:
+  audio:
+  embedding:
+  caddy:
+  caddy_config:

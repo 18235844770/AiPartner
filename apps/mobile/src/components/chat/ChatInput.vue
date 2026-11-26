@@ -3,27 +3,28 @@ import { computed, ref } from "vue";
 
 import { assets } from "@/assets/slices";
 
-const emit = defineEmits<{
-  send: [text: string];
-}>();
+const props = defineProps<{ send: (text: string) => Promise<boolean> }>();
 
 const draft = ref("");
+const submitting = ref(false);
 
-const canSend = computed(() => draft.value.trim().length > 0);
+const canSend = computed(() => !submitting.value && draft.value.trim().length > 0);
 
-function submit(): void {
-  const text = draft.value.trim();
-  if (!text) {
-    return;
+async function submit(): Promise<void> {
+  if (!canSend.value) return;
+  const previous = draft.value;
+  submitting.value = true;
+  try {
+    if (await props.send(previous.trim()) && draft.value === previous) draft.value = "";
+  } finally {
+    submitting.value = false;
   }
-  emit("send", text);
-  draft.value = "";
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === "Enter") {
+  if (event.key === "Enter" && !event.isComposing) {
     event.preventDefault();
-    submit();
+    void submit();
   }
 }
 </script>
@@ -36,6 +37,7 @@ function onKeydown(event: KeyboardEvent): void {
     <input
       v-model="draft"
       type="text"
+      maxlength="8000"
       enterkeyhint="send"
       placeholder="输入消息..."
       aria-label="输入消息"

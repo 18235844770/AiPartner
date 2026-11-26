@@ -1,0 +1,16 @@
+{
+    admin off
+}
+
+{$BETA_SITE_ADDRESS} {
+    basic_auth {
+        {$BETA_INVITE_USER} {$BETA_INVITE_HASH}
+    }
+
+    redir / /mobile/ 302
+    header Strict-Transport-Security "max-age=86400"
+    reverse_proxy api:8000 {
+        header_up -Authorization
+        flush_interval -1
+    }
+}

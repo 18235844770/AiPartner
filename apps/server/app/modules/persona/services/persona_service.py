@@ -106,6 +106,21 @@ class PersonaService:
             raise NotFoundError("人格不存在")
         return profile, version
 
+    async def select_template(
+        self, session: AsyncSession, user_id: uuid.UUID, companion_id: uuid.UUID, mbti_type: MbtiType,
+    ) -> None:
+        """Update the persona while the caller holds the companion row lock."""
+        await self._identity.get_owned_companion(session, user_id, companion_id)
+        profile, current = await self._require_current(session, companion_id)
+        if current.mbti_type == mbti_type.value:
+            return
+        version = self._new_template_version(
+            profile.id, uuid.uuid4(), self._templates[mbti_type], current.version_number + 1, "用户调整性格",
+        )
+        await self._personas.add_version(session, version)
+        profile.current_version_id = version.id
+        profile.updated_at = datetime.now(UTC)
+
     def _new_profile(self, companion_id: uuid.UUID, template: PersonaTemplate) -> tuple[PersonaProfile, PersonaVersion]:
         profile_id = uuid.uuid4()
         version_id = uuid.uuid4()
@@ -115,10 +130,17 @@ class PersonaService:
             initial_version_id=version_id,
             current_version_id=version_id,
         )
-        version = PersonaVersion(
+        version = self._new_template_version(profile_id, version_id, template, 1, INITIAL_CHANGE_REASON)
+        return profile, version
+
+    def _new_template_version(
+        self, profile_id: uuid.UUID, version_id: uuid.UUID, template: PersonaTemplate,
+        version_number: int, change_reason: str,
+    ) -> PersonaVersion:
+        return PersonaVersion(
             id=version_id,
             persona_profile_id=profile_id,
-            version_number=1,
+            version_number=version_number,
             mbti_type=template.mbti_type.value,
             core_traits={
                 "title": template.title,
@@ -144,9 +166,8 @@ class PersonaService:
                 ),
             },
             archive=template.archive.dump(),
-            change_reason=INITIAL_CHANGE_REASON,
+            change_reason=change_reason,
         )
-        return profile, version
 
 
 def to_persona_response(profile: PersonaProfile, version: PersonaVersion) -> PersonaResponse:

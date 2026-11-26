@@ -1,16 +1,31 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
 import AppButton from "@/components/common/AppButton.vue";
 import SettingsDetail from "@/components/layout/SettingsDetail.vue";
 import { readPersonaView, type PersonaView } from "@/domain/persona-view";
 import { errorText } from "@/services/http";
-import { getPersona } from "@/services/persona";
+import { accountJson } from "@/services/account";
 import { useWorkspaceStore } from "@/stores/workspace";
+import type { PersonaResponse } from "@/types/api";
+import { afterLogin } from "@/router";
 
 const workspace = useWorkspaceStore();
+const route = useRoute();
+const router = useRouter();
+const onboarding = computed(() => route.query.setup === "1");
+const personalities = [
+  { id: "INFJ", label: "INFJ · 安静共情" },
+  { id: "INFP", label: "INFP · 温柔细腻" },
+  { id: "ENFP", label: "ENFP · 活泼好奇" },
+  { id: "ENFJ", label: "ENFJ · 热情体贴" },
+  { id: "INTJ", label: "INTJ · 理性直接" },
+  { id: "INTP", label: "INTP · 好奇善思" },
+];
 const name = ref("");
 const description = ref("");
+const mbti = ref("");
 const persona = ref<PersonaView | null>(null);
 const loading = ref(true);
 const saving = ref(false);
@@ -43,9 +58,10 @@ watch(
     loading.value = true;
     error.value = "";
     personaNote.value = "";
-    void getPersona(scope)
+    void accountJson<PersonaResponse>("/companion/persona")
       .then((current) => {
         persona.value = readPersonaView(current);
+        mbti.value = current.current_version.mbti_type;
       })
       .catch((caught: unknown) => {
         persona.value = null;
@@ -73,7 +89,14 @@ async function save(): Promise<void> {
     await workspace.saveCompanion({
       name: trimmed,
       ...(nextDescription !== current ? { description: nextDescription } : {}),
+      ...(mbti.value ? { mbti_type: mbti.value } : {}),
     });
+    if (onboarding.value) {
+      finishSetup();
+      return;
+    }
+    const updated = await accountJson<PersonaResponse>("/companion/persona");
+    persona.value = readPersonaView(updated);
     saved.value = "已保存";
   } catch (caught) {
     error.value = errorText(caught);
@@ -81,20 +104,31 @@ async function save(): Promise<void> {
     saving.value = false;
   }
 }
+
+function finishSetup(): void {
+  workspace.finishRegistrationSetup();
+  void router.replace(afterLogin(route.query.next));
+}
 </script>
 
 <template>
-  <SettingsDetail title="角色资料">
+  <SettingsDetail :title="onboarding ? '设置你的陪伴者' : '角色资料'">
     <p v-if="loading" class="hint">正在读取资料</p>
     <form v-else class="stack" @submit.prevent="save">
       <section class="panel panel-body">
         <label class="label" for="companion-name">名字</label>
         <input id="companion-name" v-model="name" type="text" maxlength="64" autocomplete="off" />
-        <label class="label" for="companion-description">介绍</label>
+        <label class="label" for="companion-personality">性格</label>
+        <select id="companion-personality" v-model="mbti">
+          <option value="">沿用当前性格</option>
+          <option v-for="option in personalities" :key="option.id" :value="option.id">{{ option.label }}</option>
+        </select>
+        <label class="label" for="companion-description">备注</label>
         <textarea id="companion-description" v-model="description" rows="3" maxlength="200" />
         <p v-if="error" class="page-error">{{ error }}</p>
         <p v-else-if="saved" class="page-note">{{ saved }}</p>
-        <AppButton type="submit" :loading="saving">保存</AppButton>
+        <AppButton type="submit" :loading="saving">{{ onboarding ? '保存并继续' : '保存' }}</AppButton>
+        <AppButton v-if="onboarding" variant="secondary" :disabled="saving" @click="finishSetup">稍后设置</AppButton>
       </section>
 
       <section class="panel panel-body">
@@ -107,7 +141,6 @@ async function save(): Promise<void> {
             <li v-for="item in persona.interests" :key="item">{{ item }}</li>
           </ul>
         </template>
-        <p class="hint stay">核心人格会一直保持，这里只展示现在的样子。</p>
       </section>
     </form>
   </SettingsDetail>
@@ -129,6 +162,7 @@ input + .label {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   margin-bottom: 14px;

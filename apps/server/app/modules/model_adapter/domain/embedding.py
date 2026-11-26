@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 EMBEDDING_DIMENSIONS = 1024
-LOCAL_EMBEDDING_MODEL = "BAAI/bge-m3"
+LOCAL_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B-Q"
 
 
 class TextEmbedder(Protocol):

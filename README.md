@@ -33,7 +33,7 @@ pnpm dev
 
 ## 多用户移动 Web
 
-在 `apps/server` 目录运行，确保 PostgreSQL、pgvector 与 Redis 已就绪：
+先在 `apps/mobile` 目录执行 `pnpm install --frozen-lockfile` 和 `pnpm build`，然后在 `apps/server` 目录运行以下命令。启动前需准备 PostgreSQL、pgvector 和 Redis。
 
 ```powershell
 uv sync --locked
@@ -44,4 +44,8 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 另开一个终端，在同一目录设置 `ACCOUNT_MODE=true` 并运行 `uv run arq app.modules.infrastructure.worker.WorkerSettings`。使用浏览器打开 `http://127.0.0.1:8000/mobile/`。对外部署由 HTTPS 反向代理在同一域名转发 `/mobile/` 和 `/api/`，并为 SSE 关闭响应缓冲。API 与 Worker 应连接同一 PostgreSQL、Redis 和音频存储。多用户模式只注册账号及聊天 API。本地 Electron 使用默认模式和独立开发数据库。
 
+开发移动页面时，可在 `apps/mobile` 执行 `pnpm dev` 并打开 `http://127.0.0.1:5174/mobile/`。Vite 会将 API 请求代理到已启动的账号服务。
+
 移动端使用用户名和密码。注册后客户端继续登录，服务端返回初始化状态。可使用 `PROACTIVE_DAILY_BUDGET` 设置每位伴侣每 24 小时的主动评估上限，默认 24。`ACCOUNT_INTEGRATION_TESTS=1` 可启用真实 PostgreSQL 和 Redis 的账号集成用例。
+
+邀请制内测使用 [HTTPS 容器部署说明](infrastructure/docker/BETA.md)。

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
 import { assets } from "@/assets/slices";
 import Avatar from "@/components/avatar/Avatar.vue";
@@ -7,82 +8,84 @@ import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
 import ScreenFrame from "@/components/layout/ScreenFrame.vue";
 import { useKeyboardInset } from "@/composables/useKeyboardInset";
-import { isEmailAddress } from "@/utils/email";
+import { afterLogin } from "@/router";
+import { errorText } from "@/services/http";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 useKeyboardInset();
 
 const languageOpen = ref(false);
-const mode = ref<"password" | "code">("password");
-const email = ref("");
+const registering = ref(false);
+const username = ref("");
 const password = ref("");
-const code = ref("");
-const emailError = ref("");
+const confirmation = ref("");
+const confirmationError = ref("");
+const usernameError = ref("");
 const secretError = ref("");
 const notice = ref("");
 const submitting = ref(false);
+const canRetrySetup = ref(false);
+const setupAttempt = ref(0);
+const workspace = useWorkspaceStore();
+const router = useRouter();
+const route = useRoute();
 
-const codeMode = computed(() => mode.value === "code");
-
-function resetErrors(): void {
-  emailError.value = "";
-  secretError.value = "";
+async function run(action: () => Promise<void>): Promise<void> {
+  if (submitting.value) return;
   notice.value = "";
-}
-
-function validateEmail(): boolean {
-  if (!email.value.trim()) {
-    emailError.value = "请输入邮箱地址";
-    return false;
-  }
-  if (!isEmailAddress(email.value)) {
-    emailError.value = "请输入有效的邮箱地址";
-    return false;
-  }
-  return true;
-}
-
-function requestCode(): void {
-  resetErrors();
-  if (!validateEmail()) {
-    return;
-  }
-  notice.value = "验证码发送将在账号服务接入后可用";
-}
-
-async function submit(): Promise<void> {
-  resetErrors();
-  if (!validateEmail()) {
-    return;
-  }
-  if (mode.value === "password" && !password.value) {
-    secretError.value = "请输入密码";
-    return;
-  }
-  if (mode.value === "code" && !code.value.trim()) {
-    secretError.value = "请输入验证码";
-    return;
-  }
   submitting.value = true;
   try {
-    notice.value = "登录稍后接入";
+    await action();
+  } catch (caught) {
+    notice.value = errorText(caught);
   } finally {
     submitting.value = false;
   }
 }
 
-function showPasswordLogin(): void {
-  mode.value = "password";
-  resetErrors();
+function submit(): void {
+  const name = username.value.normalize("NFKC").trim();
+  usernameError.value = /^[\p{L}\p{N}._-]{3,64}$/u.test(name) ? "" : "请输入 3–64 位用户名，可使用字母、数字、点、下划线和连字符";
+  secretError.value = !password.value ? "请输入密码" : registering.value && password.value.length < 8 ? "密码至少 8 位" : "";
+  confirmationError.value = registering.value && confirmation.value !== password.value ? "两次输入的密码不一致" : "";
+  if (usernameError.value || secretError.value || confirmationError.value) return;
+  void run(async () => {
+    await workspace.signIn({ username: name, password: password.value }, registering.value ? confirmation.value : undefined);
+    password.value = confirmation.value = "";
+  });
 }
 
-function showCodeLogin(): void {
-  mode.value = "code";
-  resetErrors();
+function toggleMode(): void {
+  registering.value = !registering.value;
+  password.value = confirmation.value = confirmationError.value = usernameError.value = secretError.value = notice.value = "";
 }
 
-function showLater(message: string): void {
-  notice.value = message;
+watch(() => workspace.phase, (phase) => {
+  if (phase === "ready") void router.replace(afterLogin(route.query.redirect));
+}, { immediate: true });
+
+async function retrySetup(): Promise<void> {
+  await workspace.retrySetup();
+  setupAttempt.value += 1;
 }
+
+watch([() => workspace.companion?.initialization_status, setupAttempt], ([status], _, onCleanup) => {
+  canRetrySetup.value = status === "failed";
+  if (status !== "pending") return;
+  let attempts = 0;
+  let disposed = false;
+  let timer: number;
+  const poll = async () => {
+    try { await workspace.checkCompanion(); } catch (caught) {
+      if (!disposed) notice.value = errorText(caught);
+    }
+    if (disposed) return;
+    if (++attempts < 5) timer = window.setTimeout(poll, 1200);
+    else canRetrySetup.value = true;
+  };
+  timer = window.setTimeout(poll, 1200);
+  onCleanup(() => { disposed = true; window.clearTimeout(timer); });
+}, { immediate: true });
 </script>
 
 <template>
@@ -119,24 +122,32 @@ function showLater(message: string): void {
       </div>
       <p class="slogan">让陪伴，自然而然地发生</p>
 
-      <form class="form" @submit.prevent="submit">
+      <div v-if="workspace.phase === 'setup'" class="form">
+        <p class="notice" role="status">
+          {{ workspace.companion?.initialization_status === 'failed' ? '伴侣初始化失败' : '正在为你准备专属伴侣' }}
+        </p>
+        <AppButton v-if="canRetrySetup" :loading="submitting" @click="run(retrySetup)">重试初始化</AppButton>
+        <AppButton variant="secondary" :disabled="submitting" @click="run(workspace.signOut)">退出登录</AppButton>
+      </div>
+      <div v-else-if="workspace.phase === 'loading' || workspace.phase === 'unavailable'" class="form">
+        <p class="notice" role="status">{{ workspace.error || '正在恢复登录' }}</p>
+        <AppButton v-if="workspace.phase === 'unavailable'" @click="run(workspace.retryConnection)">重试连接</AppButton>
+      </div>
+      <form v-else class="form" @submit.prevent="submit">
         <AppInput
-          v-model="email"
-          type="email"
-          name="email"
+          v-model="username"
+          name="username"
           autocomplete="username"
-          inputmode="email"
-          placeholder="邮箱地址"
-          :icon="assets.email"
-          :error="emailError"
+          placeholder="用户名"
+          :icon="assets.profile"
+          :error="usernameError"
           :disabled="submitting"
         />
         <AppInput
-          v-if="!codeMode"
           v-model="password"
           type="password"
           name="password"
-          autocomplete="current-password"
+          :autocomplete="registering ? 'new-password' : 'current-password'"
           placeholder="密码"
           revealable
           :icon="assets.lock"
@@ -144,47 +155,22 @@ function showLater(message: string): void {
           :disabled="submitting"
         />
         <AppInput
-          v-else
-          v-model="code"
-          name="code"
-          inputmode="numeric"
-          autocomplete="one-time-code"
-          placeholder="验证码"
-          :icon="assets.email"
-          :error="secretError"
+          v-if="registering"
+          v-model="confirmation"
+          type="password"
+          name="confirm-password"
+          autocomplete="new-password"
+          placeholder="确认密码"
+          :icon="assets.lock"
+          :error="confirmationError"
           :disabled="submitting"
-        >
-          <template #suffix>
-            <button class="code-action" type="button" @click="requestCode">获取验证码</button>
-          </template>
-        </AppInput>
-
-        <div v-if="!codeMode" class="forgot-row">
-          <button class="forgot" type="button" @click="showLater('重置密码将在账号服务接入后可用')">
-            忘记密码？
-          </button>
-          <img class="forgot-spark" :src="assets.starSmall" alt="" />
-        </div>
-
-        <AppButton type="submit" :loading="submitting">登录</AppButton>
-        <p v-if="notice" class="notice">{{ notice }}</p>
+        />
+        <AppButton type="submit" :loading="submitting">{{ registering ? '注册并登录' : '登录' }}</AppButton>
       </form>
-
-      <div class="divider" aria-hidden="true"><span>或</span></div>
-
-      <AppButton v-if="!codeMode" variant="secondary" :icon="assets.email" @click="showCodeLogin">
-        邮箱验证码登录
-      </AppButton>
-      <AppButton v-else variant="secondary" @click="showPasswordLogin">使用密码登录</AppButton>
-
-      <p class="register">
-        还没有账号？
-        <button type="button" @click="showLater('注册将在账号服务接入后可用')">注册账号</button>
-      </p>
-      <p class="legal">
-        <button type="button" @click="showLater('服务条款将在正式页面提供')">服务条款</button>
-        <span>·</span>
-        <button type="button" @click="showLater('隐私政策将在正式页面提供')">隐私政策</button>
+      <p v-if="notice" class="notice feedback" role="alert">{{ notice }}</p>
+      <p v-if="workspace.phase === 'signed-out'" class="register">
+        {{ registering ? '已有账号？' : '还没有账号？' }}
+        <button type="button" :disabled="submitting" @click="toggleMode">{{ registering ? '返回登录' : '注册账号' }}</button>
       </p>
     </div>
   </ScreenFrame>
@@ -346,57 +332,14 @@ h1 {
   margin-top: 28px;
 }
 
-.forgot-row {
-  position: relative;
-  display: flex;
-  justify-content: flex-end;
-  margin-top: -2px;
-}
-
-.forgot {
-  min-height: 32px;
-  color: var(--color-primary);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-}
-
-.forgot-spark {
-  position: absolute;
-  width: 18px;
-  right: -8px;
-  top: -10px;
-  pointer-events: none;
-}
-
 .notice {
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
   text-align: center;
 }
 
-.code-action {
-  min-height: 44px;
-  color: var(--color-primary);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 18px 0;
-  color: #b7b2c2;
-  font-size: var(--font-size-sm);
-}
-
-.divider::before,
-.divider::after {
-  content: "";
-  height: 1px;
-  flex: 1;
-  background: #e6e1ee;
+.feedback {
+  margin-top: 12px;
 }
 
 .register {
@@ -406,24 +349,8 @@ h1 {
   font-size: var(--font-size-sm);
 }
 
-.register button,
-.legal button {
+.register button {
   color: var(--color-primary);
   font-weight: 700;
-}
-
-.legal {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 28px;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
-}
-
-.legal button {
-  min-height: 32px;
-  font-weight: 600;
 }
 </style>

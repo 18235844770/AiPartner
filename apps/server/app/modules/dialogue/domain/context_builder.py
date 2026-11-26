@@ -345,6 +345,7 @@ def _core(
     return {
         "mbti_type": mbti_type,
         "title": core_traits.get("title"),
+        **({"companion_name": core_traits["companion_name"]} if core_traits.get("companion_name") else {}),
         "summary": core_traits.get("summary") or identity.identity_summary,
         "core_temperament": list(identity.core_temperament),
         "cognitive_style": list(identity.cognitive_style),

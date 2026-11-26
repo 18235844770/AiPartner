@@ -17,6 +17,7 @@ const router = useRouter();
 const workspace = useWorkspaceStore();
 const dialogue = useDialogueStore();
 const scroller = ref<HTMLElement | null>(null);
+let preservingScroll = false;
 
 function scrollToEnd(): void {
   const element = scroller.value;
@@ -26,8 +27,8 @@ function scrollToEnd(): void {
   element.scrollTop = element.scrollHeight;
 }
 
-function send(text: string): void {
-  void dialogue.sendMessage(text).finally(() => {
+function send(text: string): Promise<boolean> {
+  return dialogue.sendMessage(text).finally(() => {
     void nextTick(scrollToEnd);
   });
 }
@@ -35,10 +36,25 @@ function send(text: string): void {
 watch(
   () => dialogue.messages,
   () => {
-    void nextTick(scrollToEnd);
+    if (!preservingScroll) void nextTick(scrollToEnd);
   },
   { deep: true },
 );
+
+async function loadOlder(): Promise<void> {
+  const element = scroller.value;
+  if (!element || preservingScroll) return;
+  const previousHeight = element.scrollHeight;
+  const previousPosition = element.scrollTop;
+  preservingScroll = true;
+  try {
+    await dialogue.loadOlder();
+    await nextTick();
+    element.scrollTop = previousPosition + element.scrollHeight - previousHeight;
+  } finally {
+    preservingScroll = false;
+  }
+}
 
 </script>
 
@@ -70,10 +86,13 @@ watch(
 
       <div ref="scroller" class="transcript">
         <p v-if="dialogue.loading" class="state">正在读取对话</p>
-        <ChatMessageList v-else :messages="dialogue.messages" :typing="dialogue.typing" />
+        <template v-else>
+          <button v-if="dialogue.hasOlder" class="state older" type="button" :disabled="dialogue.loadingOlder" @click="loadOlder">加载较早消息</button>
+          <ChatMessageList :messages="dialogue.messages" :typing="dialogue.typing" @retry="dialogue.retry" />
+        </template>
       </div>
       <p v-if="dialogue.error" class="error">{{ dialogue.error }}</p>
-      <ChatInput @send="send" />
+      <ChatInput :send="send" />
     </section>
   </ScreenFrame>
 </template>

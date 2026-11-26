@@ -8,6 +8,7 @@ const props = defineProps<{
   messages: ChatMessageItem[];
   typing: boolean;
 }>();
+const emit = defineEmits<{ retry: [turnId: string] }>();
 
 const visible = computed(() =>
   props.messages.filter((message) => {
@@ -27,13 +28,10 @@ function isGrouped(index: number): boolean {
 
 <template>
   <div class="list">
-    <ChatMessage
-      v-for="(message, index) in visible"
-      :key="message.id"
-      :role="message.role"
-      :text="message.text"
-      :grouped="isGrouped(index)"
-    />
+    <template v-for="(message, index) in visible" :key="message.id">
+      <ChatMessage :role="message.role" :text="message.text" :grouped="isGrouped(index)" />
+      <button v-if="message.retryTurnId" class="retry" type="button" @click="emit('retry', message.retryTurnId)">回复失败，重试</button>
+    </template>
     <div v-if="typing" class="typing" aria-label="对方正在输入">
       <span />
       <span />
@@ -47,6 +45,13 @@ function isGrouped(index: number): boolean {
 .list {
   display: flex;
   flex-direction: column;
+}
+
+.retry {
+  align-self: flex-end;
+  min-height: 36px;
+  color: var(--color-primary-deep);
+  font-size: var(--font-size-sm);
 }
 
 .typing {

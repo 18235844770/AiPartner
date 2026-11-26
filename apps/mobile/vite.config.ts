@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL(".", import.meta.url));
 const slices = fileURLToPath(new URL("../../static/slices", import.meta.url));
 
 export default defineConfig({
+  base: "/mobile/",
   plugins: [vue()],
   resolve: {
     alias: {

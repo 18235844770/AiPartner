@@ -8,12 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import get_settings
 from app.modules.identity.api.account_schemas import (
-    AccountResponse, ChangePasswordRequest, DeleteAccountRequest, LoginRequest, ManagedCompanionResponse,
+    AccountResponse, ChangePasswordRequest, DeleteAccountRequest, LoginRequest, ManagedCompanionResponse, ManagedCompanionUpdate,
     RegisterRequest, UpdateProfileRequest,
 )
 from app.modules.identity.repositories.models import Companion
 from app.modules.identity.services.auth_service import AccountPrincipal, AuthService, SessionTokens
 from app.modules.identity.services.companion_setup import CompanionSetupService
+from app.modules.persona.api.schemas import PersonaResponse
+from app.modules.persona.services.persona_service import PersonaService, to_persona_response
 from app.shared.database.session import get_session
 from app.shared.exceptions.errors import ForbiddenError, RateLimitError, UnauthorizedError, UnavailableError
 
@@ -21,6 +23,7 @@ from app.shared.exceptions.errors import ForbiddenError, RateLimitError, Unautho
 router = APIRouter(tags=["account"])
 auth = AuthService()
 setup = CompanionSetupService()
+personas = PersonaService()
 ACCESS_COOKIE = "__Host-companion-access"
 REFRESH_COOKIE = "__Host-companion-refresh"
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -52,7 +55,11 @@ async def current_account(request: Request, session: DatabaseSession) -> Account
     access = request.cookies.get(ACCESS_COOKIE)
     if not access:
         raise UnauthorizedError("请先登录")
-    return await auth.authenticate(session, access)
+    principal = await auth.authenticate(session, access)
+    expected_user = request.headers.get("X-Companion-Account")
+    if expected_user is not None and expected_user != str(principal.user_id):
+        raise UnauthorizedError("当前账号已切换，请重新登录")
+    return principal
 
 
 Account = Annotated[AccountPrincipal, Depends(current_account)]
@@ -112,7 +119,10 @@ async def refresh(request: Request, session: DatabaseSession) -> Response:
 
 @router.post("/auth/logout", status_code=204, dependencies=Mutation)
 async def logout(request: Request, session: DatabaseSession) -> Response:
-    await auth.logout(session, request.cookies.get(ACCESS_COOKIE), request.cookies.get(REFRESH_COOKIE))
+    await auth.logout(
+        session, request.cookies.get(ACCESS_COOKIE), request.cookies.get(REFRESH_COOKIE),
+        request.headers.get("X-Companion-Account"),
+    )
     return _clear_tokens(Response(status_code=204))
 
 
@@ -149,11 +159,34 @@ async def delete_account(body: DeleteAccountRequest, request: Request, account: 
 @router.get("/companion/me", response_model=ManagedCompanionResponse)
 async def get_companion(response: Response, account: Account, session: DatabaseSession) -> ManagedCompanionResponse:
     response.headers["Cache-Control"] = "no-store"
-    companion: Companion = await setup.get(session, account.user_id)
+    return _managed_response(await setup.get(session, account.user_id))
+
+
+def _managed_response(companion: Companion) -> ManagedCompanionResponse:
     return ManagedCompanionResponse(
-        id=companion.id, name=companion.name, initialization_status=companion.initialization_status or "pending",
+        id=companion.id, name=companion.name, description=companion.description,
+        initialization_status=companion.initialization_status or "pending",
         initialized_at=companion.initialized_at,
     )
+
+
+@router.patch("/companion/me", response_model=ManagedCompanionResponse, dependencies=Mutation)
+async def update_companion(
+    body: ManagedCompanionUpdate, response: Response, account: Account, session: DatabaseSession,
+) -> ManagedCompanionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    companion = await setup.update_profile(
+        session, account.user_id, body.name, body.description, "description" in body.model_fields_set, body.mbti_type,
+    )
+    return _managed_response(companion)
+
+
+@router.get("/companion/persona", response_model=PersonaResponse)
+async def get_companion_persona(response: Response, account: Account, session: DatabaseSession) -> PersonaResponse:
+    response.headers["Cache-Control"] = "no-store"
+    companion = await setup.get_ready(session, account.user_id)
+    profile, version = await personas.get_current(session, account.user_id, companion.id)
+    return to_persona_response(profile, version)
 
 
 @router.post("/companion/me/retry", status_code=202, dependencies=Mutation)

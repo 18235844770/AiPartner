@@ -15,7 +15,7 @@ from app.modules.identity.repositories.auth_repository import AuthRepository
 from app.modules.identity.repositories.companion_repository import CompanionRepository
 from app.modules.identity.repositories.models import AuthSession, Companion, User
 from app.modules.identity.repositories.user_repository import UserRepository
-from app.shared.exceptions.errors import UnauthorizedError
+from app.shared.exceptions.errors import CredentialsRejectedError, UnauthorizedError
 
 
 ACCESS_LIFETIME = timedelta(minutes=15)
@@ -127,13 +127,17 @@ class AuthService:
                 raise UnauthorizedError("登录会话已失效")
             return AccountPrincipal(device.user_id, device.id)
 
-    async def logout(self, session: AsyncSession, access: str | None, refresh: str | None) -> None:
+    async def logout(
+        self, session: AsyncSession, access: str | None, refresh: str | None, expected_user: str | None = None,
+    ) -> None:
         now = datetime.now(UTC)
         async with session.begin():
             device = await self._repository.get_by_access(session, token_hash(access), now) if access else None
             if device is None and refresh:
                 device = await self._repository.get_by_refresh(session, token_hash(refresh), now)
             if device is not None:
+                if expected_user is not None and expected_user != str(device.user_id):
+                    raise UnauthorizedError("当前账号已切换，请重新登录")
                 await self._repository.revoke(session, device.id, now)
 
     async def get_user(self, session: AsyncSession, principal: AccountPrincipal) -> User:
@@ -154,12 +158,12 @@ class AuthService:
         user = await self.get_user(session, principal)
         stored_hash = user.password_hash
         if not stored_hash or not await run_in_threadpool(_verify, stored_hash, current):
-            raise UnauthorizedError("当前密码不正确")
+            raise CredentialsRejectedError("当前密码不正确")
         replacement = await run_in_threadpool(_passwords.hash, new)
         async with session.begin():
             locked_user = await self._require_user(session, principal, lock=True)
             if locked_user.password_hash != stored_hash:
-                raise UnauthorizedError("当前密码不正确")
+                raise CredentialsRejectedError("当前密码不正确")
             locked_user.password_hash = replacement
             await self._repository.revoke_others(session, principal.user_id, principal.session_id, datetime.now(UTC))
 
@@ -167,11 +171,11 @@ class AuthService:
         user = await self.get_user(session, principal)
         stored_hash = user.password_hash
         if not stored_hash or not await run_in_threadpool(_verify, stored_hash, password):
-            raise UnauthorizedError("当前密码不正确")
+            raise CredentialsRejectedError("当前密码不正确")
         async with session.begin():
             locked_user = await self._require_user(session, principal, lock=True)
             if locked_user.password_hash != stored_hash:
-                raise UnauthorizedError("当前密码不正确")
+                raise CredentialsRejectedError("当前密码不正确")
             locked_user.status = "deleting"
             await self._repository.revoke_all(session, principal.user_id, datetime.now(UTC))
 
