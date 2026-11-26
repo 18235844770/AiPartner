@@ -230,8 +230,13 @@ def speech_issues(
     return issues
 
 
-def speech_repair_message(issues: list[str]) -> str:
+def speech_repair_message(issues: list[str], *, sent_prefix: str = "") -> str:
     detail = "；".join(issues)
+    if sent_prefix:
+        return (
+            f"以下正文已经发出：{sent_prefix}。本轮仍需修正：{detail}。"
+            "只输出尚未发出的续句，接在已发正文后面，不重复已发正文，不改变已经确定的行为。"
+        )
     return (
         f"上一稿违反了口语回合：{detail}。"
         "只重写正文，不要改变已经确定的行为，不要解释这些原因。"

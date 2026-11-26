@@ -15,6 +15,7 @@ from app.modules.infrastructure.domain.enums import (
     LOCAL_MODEL_CONFIG_KEYS,
     ModelConfigKey,
     ModelProvider,
+    ModelTaskType,
 )
 from app.modules.infrastructure.repositories.infrastructure_repository import ModelConfigRepository
 from app.modules.infrastructure.repositories.models import ModelConfig

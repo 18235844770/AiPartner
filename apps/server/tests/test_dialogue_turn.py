@@ -1,22 +1,32 @@
+import asyncio
 import json
 import uuid
+from contextlib import aclosing
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
 from app.main import create_app
-from app.modules.dialogue.api.stream_schemas import TurnStarted, encode_sse
-from app.modules.dialogue.api.turn_router import get_turn_service
+from app.modules.dialogue.api.stream_schemas import MessageCompleted, MessageDelta, TurnStarted, encode_sse
+from app.modules.dialogue.api.turn_router import _event_response, get_turn_service
 from app.modules.dialogue.domain.context import decision_messages, final_send
 from app.modules.dialogue.domain.decision import DecisionMotivation, DecisionTopic
 from app.modules.dialogue.domain.enums import DialogueAction, TopicTransition
 from app.modules.dialogue.domain.suggestion import ModelDecisionSuggestion, SelfMotivation, UserNeed
-from app.modules.dialogue.services.turn_service import DialogueTurnService
+from app.modules.dialogue.services.turn_service import (
+    _MIN_MESSAGE_GAP_SECONDS,
+    DialogueTurnService,
+    TurnContext,
+    _ReplyDelivery,
+    _Sequence,
+)
 from app.modules.model_adapter.domain.errors import ModelOutputError, ModelTimeoutError
 from app.modules.model_adapter.domain.messages import TextCompletion
+from app.modules.model_adapter.services.model_adapter import ModelCallScope
 from app.shared.database.session import dispose_engine, get_engine
 
 
@@ -297,9 +307,9 @@ async def test_a_longer_reply_is_sent_as_consecutive_messages(database_ready: No
             "turn.started",
             "message.started",
             "message.delta",
+            "message.completed",
             "message.started",
             "message.delta",
-            "message.completed",
             "message.completed",
             "turn.completed",
         ]
@@ -310,6 +320,93 @@ async def test_a_longer_reply_is_sent_as_consecutive_messages(database_ready: No
         assert [item["content"] for item in companion] == deltas
         assert companion[0]["metadata"]["delivery_group"] == companion[1]["metadata"]["delivery_group"]
         decision = await client.get(f"{scope.decisions}/{events[0][1]['turn_id']}")
+        assert decision.json()["result_message_id"] == companion[0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_first_bubble_is_recorded_and_sent_while_model_is_still_generating() -> None:
+    allow_second_sentence = asyncio.Event()
+
+    class GatedStream(_Adapter):
+        async def stream_text(self, *_args):
+            yield "就着锅吃也挺自在的。"
+            await allow_second_sentence.wait()
+            yield "热气要是散了就有点可惜。"
+
+    record = AsyncMock()
+    service = DialogueTurnService(dialogue=SimpleNamespace(record_sent_message=record), adapter=GatedStream([]))
+    context = TurnContext(
+        mbti_type="INFJ", core_traits={}, communication_preferences={}, emotion_primary="calm",
+        emotion_cause="", relationship_summary="", interaction_mode="available", proactive_allowed=True,
+        recent_messages=[{"sender_type": "user", "content": "锅里的面还热着"}], memories=[], immediate_facts=[],
+    )
+    bubbles = service._realize_bubbles(
+        _suggestion(DialogueAction.RESPOND, True), context, ModelCallScope(trace_id=uuid.uuid4()),
+    )
+    delivery = _ReplyDelivery(first_message_id=uuid.uuid4())
+    async with aclosing(service._deliver_reply(
+        object(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), _Sequence(), delivery, bubbles,
+    )) as events:
+        async with asyncio.timeout(1):
+            first = [await anext(events) for _ in range(3)]
+        assert isinstance(first[1], MessageDelta)
+        assert first[1].delta == "就着锅吃也挺自在的"
+        assert isinstance(first[2], MessageCompleted)
+        assert record.await_count == 1
+        assert record.await_args.kwargs == {"message_id": delivery.first_message_id, "content": first[1].delta}
+        first_sent_at = delivery.last_sent_at
+        allow_second_sentence.set()
+        second = [event async for event in events]
+
+    assert isinstance(second[1], MessageDelta)
+    assert second[1].delta == "热气要是散了就有点可惜"
+    assert isinstance(second[2], MessageCompleted)
+    assert record.await_count == 2
+    assert delivery.last_sent_at - first_sent_at >= _MIN_MESSAGE_GAP_SECONDS - 0.01
+
+
+@pytest.mark.asyncio
+async def test_disconnected_sse_closes_turn_between_events() -> None:
+    closed = False
+
+    async def stream():
+        nonlocal closed
+        try:
+            yield TurnStarted(turn_id=uuid.uuid4(), sequence=0)
+        finally:
+            closed = True
+
+    response = await _event_response(stream())
+
+    async def send(message):
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    with pytest.raises(OSError):
+        await response.stream_response(send)
+    assert closed
+
+
+@pytest.mark.asyncio
+async def test_failed_continuation_keeps_completed_bubble(database_ready: None) -> None:
+    class FailedContinuation(_Adapter):
+        async def stream_text(self, *_args):
+            yield "就着锅吃也挺自在的。热"
+            raise ModelTimeoutError("表达模型超时")
+
+    adapter = FailedContinuation([_suggestion(DialogueAction.RESPOND, True)])
+    async with _client(adapter) as client:
+        scope = await _prepare(client)
+        response = await client.post(scope.turns, json={"content": "锅里的面还热着"})
+        events = _events(response)
+        assert [name for name, _data in events] == [
+            "turn.started", "message.started", "message.delta", "message.completed", "turn.failed",
+        ]
+        messages = await client.get(scope.messages)
+        companion = [item for item in messages.json() if item["sender_type"] == "companion"]
+        assert [(item["content"], item["status"]) for item in companion] == [("就着锅吃也挺自在的", "completed")]
+        decision = await client.get(f"{scope.decisions}/{events[0][1]['turn_id']}")
+        assert decision.json()["status"] == "failed"
         assert decision.json()["result_message_id"] == companion[0]["id"]
 
 

@@ -1,9 +1,11 @@
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
+from anyio import CancelScope
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.types import Send
 
 from app.modules.dialogue.api.schemas import ProactiveTurnRequest, UserTurnRequest
 from app.modules.dialogue.api.stream_schemas import TurnStreamEvent, encode_sse
@@ -58,16 +60,29 @@ async def consider_proactive(
     return await _event_response(stream)
 
 
-async def _event_response(stream: AsyncIterator[TurnStreamEvent]) -> StreamingResponse:
+async def _event_response(stream: AsyncGenerator[TurnStreamEvent, None]) -> StreamingResponse:
     first = await anext(stream)
+    return _TurnStreamingResponse(stream, first)
 
-    async def frames() -> AsyncIterator[str]:
-        yield encode_sse(first)
-        async for event in stream:
-            yield encode_sse(event)
 
-    return StreamingResponse(
-        frames(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+class _TurnStreamingResponse(StreamingResponse):
+    def __init__(self, stream: AsyncGenerator[TurnStreamEvent, None], first: TurnStreamEvent) -> None:
+        self._turn_stream = stream
+
+        async def frames() -> AsyncGenerator[str, None]:
+            yield encode_sse(first)
+            async for event in stream:
+                yield encode_sse(event)
+
+        super().__init__(
+            frames(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    async def stream_response(self, send: Send) -> None:
+        try:
+            await super().stream_response(send)
+        finally:
+            with CancelScope(shield=True):
+                await self._turn_stream.aclose()

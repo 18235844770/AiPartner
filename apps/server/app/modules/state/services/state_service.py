@@ -43,7 +43,7 @@ class StateService:
         user_id: uuid.UUID,
         companion_id: uuid.UUID,
     ) -> CompanionState:
-        async with session.begin():
+        async with (session.begin_nested() if session.in_transaction() else session.begin()):
             await self._identity.get_owned_companion(session, user_id, companion_id)
             existing = await self._states.get_for_companion(session, companion_id)
             if existing is not None:

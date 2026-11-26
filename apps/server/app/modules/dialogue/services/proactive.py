@@ -2,14 +2,15 @@
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config.settings import get_settings
 from app.modules.conversation.domain.enums import ConversationStatus, MessageStatus, SenderType
 from app.modules.conversation.repositories.models import Conversation
 from app.modules.conversation.services.conversation_service import ConversationService
-from app.modules.dialogue.api.stream_schemas import TurnCompleted, TurnFailed
+from app.modules.dialogue.api.stream_schemas import MessageCompleted, TurnCompleted, TurnFailed
 from app.modules.dialogue.domain.proactive import (
     ProactiveAttachmentCue,
     ProactiveMessage,
@@ -18,7 +19,9 @@ from app.modules.dialogue.domain.proactive import (
     schedule_bucket,
 )
 from app.modules.dialogue.services.turn_service import DialogueTurnService
+from app.modules.dialogue.services.dialogue_service import DialogueService
 from app.modules.identity.services.identity_service import IdentityService
+from app.modules.identity.services.companion_setup import CompanionSetupService
 from app.modules.infrastructure.api.schemas import CreateBackgroundTaskRequest
 from app.modules.infrastructure.domain.enums import BackgroundTaskType
 from app.modules.infrastructure.services.background_task_service import BackgroundTaskService
@@ -62,18 +65,26 @@ class ProactiveCheckService:
         user_id: uuid.UUID,
         companion_id: uuid.UUID,
         now: datetime | None = None,
+        task_id: uuid.UUID | None = None,
     ) -> dict[str, object]:
         if session.in_transaction():
-            return await self._check(session, user_id=user_id, companion_id=companion_id, now=now or datetime.now(UTC))
-        async with session.begin():
-            return await self._check(session, user_id=user_id, companion_id=companion_id, now=now or datetime.now(UTC))
+            result = await self._check(session, user_id=user_id, companion_id=companion_id, now=now or datetime.now(UTC))
+        else:
+            async with session.begin():
+                result = await self._check(session, user_id=user_id, companion_id=companion_id, now=now or datetime.now(UTC))
+        if isinstance(result, uuid.UUID):
+            return await self._run_proactive_turn(user_id, companion_id, result, task_id=task_id)
+        return result
 
     async def schedule_due(self, *, now: datetime | None = None, limit: int = _SCHEDULE_LIMIT) -> int:
         moment = now or datetime.now(UTC)
         bucket = schedule_bucket(moment)
         async with self._session_factory() as session:
             async with session.begin():
-                targets = await self._states.list_active_owners(session, limit)
+                if get_settings().multi_user_enabled:
+                    targets = await CompanionSetupService().claim_reviews(session, moment, limit)
+                else:
+                    targets = await self._states.list_active_owners(session, limit)
                 created = 0
                 for companion_id, user_id in targets:
                     result = await self._tasks.create(
@@ -102,7 +113,7 @@ class ProactiveCheckService:
         user_id: uuid.UUID,
         companion_id: uuid.UUID,
         now: datetime,
-    ) -> dict[str, object]:
+    ) -> dict[str, object] | uuid.UUID:
         await self._identity.get_owned_companion(session, user_id, companion_id)
         current = await self._repository.get_for_companion(session, companion_id)
         if current is None:
@@ -140,31 +151,39 @@ class ProactiveCheckService:
         )
         if attachment_blocked is not None:
             return {"checked": True, "sent": False, "reason": attachment_blocked}
-        # 主动回合必须在独立会话中执行：调用方（如 TaskExecutor）若包着长事务，
-        # 决策的 begin() 只会变成 savepoint，模型日志侧看不到未提交的 decision。
-        return await self._run_proactive_turn(user_id, companion_id, conversation_id)
+        settings = get_settings()
+        if settings.multi_user_enabled and await DialogueService().proactive_count(
+            session, user_id, companion_id, now - timedelta(days=1),
+        ) >= settings.proactive_daily_budget:
+            return {"checked": True, "sent": False, "reason": "daily_budget"}
+        return conversation_id
 
     async def _run_proactive_turn(
         self,
         user_id: uuid.UUID,
         companion_id: uuid.UUID,
         conversation_id: uuid.UUID,
+        *,
+        task_id: uuid.UUID | None = None,
     ) -> dict[str, object]:
         outcome = "quiet"
         sent = False
         async with self._session_factory() as turn_session:
+            options = {"managed_decision_id": task_id} if task_id is not None else {}
             async for event in self._turns.iter_proactive_turn(
                 turn_session,
                 user_id,
                 companion_id,
                 conversation_id,
+                **options,
             ):
-                if isinstance(event, TurnCompleted):
+                if isinstance(event, MessageCompleted):
+                    sent = True
+                elif isinstance(event, TurnCompleted):
                     outcome = event.outcome
-                    sent = event.outcome == "replied"
+                    sent = sent or event.outcome == "replied"
                 elif isinstance(event, TurnFailed):
                     outcome = "failed"
-                    sent = False
         logger.info("proactive check for companion %s outcome %s", companion_id, outcome)
         return {"checked": True, "sent": sent, "outcome": outcome}
 

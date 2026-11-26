@@ -88,6 +88,19 @@ class DialogueService:
             await self._identity.get_owned_companion(session, user_id, companion_id)
             return await self._require(session, decision_id, companion_id)
 
+    async def proactive_count(
+        self, session: AsyncSession, user_id: uuid.UUID, companion_id: uuid.UUID, since: datetime,
+    ) -> int:
+        await self._identity.get_owned_companion(session, user_id, companion_id)
+        return await self._decisions.proactive_count(session, companion_id, since)
+
+    async def find_owned_decision(
+        self, session: AsyncSession, user_id: uuid.UUID, companion_id: uuid.UUID, decision_id: uuid.UUID,
+    ) -> DialogueDecision | None:
+        async with session.begin():
+            await self._identity.get_owned_companion(session, user_id, companion_id)
+            return await self._decisions.get_for_companion(session, decision_id, companion_id)
+
     async def list_decisions(
         self,
         session: AsyncSession,
@@ -117,6 +130,8 @@ class DialogueService:
                 raise ConflictError("决策已经完成")
             if decision.status != DecisionStatus.APPROVED.value:
                 raise AppError("决策当前不能生成消息")
+            if decision.result_message_id is not None:
+                raise ConflictError("决策已经发送消息")
             if decision.conversation_id is None:
                 raise AppError("发送决策必须关联会话")
             result = await self._conversations.append_message(
@@ -132,7 +147,7 @@ class DialogueService:
         logger.info("realized decision %s as message %s", decision.id, decision.result_message_id)
         return decision
 
-    async def complete_sent_message(
+    async def record_sent_message(
         self,
         session: AsyncSession,
         user_id: uuid.UUID,
@@ -141,42 +156,47 @@ class DialogueService:
         *,
         message_id: uuid.UUID,
         content: str,
-        extra_messages: list[tuple[uuid.UUID, str]] | None = None,
-    ) -> DialogueDecision:
-        if session.in_transaction():
-            decision = await self._complete_sent_message(
+        public_turn_id: uuid.UUID | None = None,
+    ) -> None:
+        async with session.begin():
+            decision = await self._approved_send_decision(session, user_id, companion_id, decision_id)
+            message = await self._conversations.record_turn_message(
                 session,
                 user_id,
                 companion_id,
-                decision_id,
+                decision.conversation_id,
                 message_id=message_id,
                 content=content,
-                extra_messages=extra_messages,
+                status=MessageStatus.COMPLETED,
+                metadata=MessageMetadata(
+                    delivery_group=decision_id, turn_id=public_turn_id or decision_id,
+                    is_proactive=decision.trigger_type == TriggerType.PROACTIVE.value,
+                ),
             )
-        else:
-            async with session.begin():
-                decision = await self._complete_sent_message(
-                    session,
-                    user_id,
-                    companion_id,
-                    decision_id,
-                    message_id=message_id,
-                    content=content,
-                    extra_messages=extra_messages,
-                )
-        logger.info("completed decision %s as message %s", decision.id, decision.result_message_id)
-        return decision
+            if decision.result_message_id is None:
+                decision.result_message_id = message.id
 
-    async def _complete_sent_message(
+    async def finish_sent_turn(
         self,
         session: AsyncSession,
         user_id: uuid.UUID,
         companion_id: uuid.UUID,
         decision_id: uuid.UUID,
-        *,
-        message_id: uuid.UUID,
-        content: str,
-        extra_messages: list[tuple[uuid.UUID, str]] | None = None,
+    ) -> None:
+        async with session.begin():
+            decision = await self._approved_send_decision(session, user_id, companion_id, decision_id)
+            if decision.result_message_id is None:
+                raise ConflictError("决策还没有发送消息")
+            decision.status = DecisionStatus.COMPLETED.value
+            decision.completed_at = datetime.now(UTC)
+        logger.info("completed decision %s as message %s", decision.id, decision.result_message_id)
+
+    async def _approved_send_decision(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        companion_id: uuid.UUID,
+        decision_id: uuid.UUID,
     ) -> DialogueDecision:
         await self._identity.get_owned_companion(session, user_id, companion_id)
         decision = await self._decisions.get_for_update(session, decision_id, companion_id)
@@ -184,31 +204,6 @@ class DialogueService:
             raise NotFoundError("决策不存在")
         if decision.status != DecisionStatus.APPROVED.value or decision.conversation_id is None:
             raise ConflictError("决策当前不能生成消息")
-        metadata = MessageMetadata(delivery_group=decision_id)
-        message = await self._conversations.record_turn_message(
-            session,
-            user_id,
-            companion_id,
-            decision.conversation_id,
-            message_id=message_id,
-            content=content,
-            status=MessageStatus.COMPLETED,
-            metadata=metadata,
-        )
-        for extra_id, extra_content in extra_messages or []:
-            await self._conversations.record_turn_message(
-                session,
-                user_id,
-                companion_id,
-                decision.conversation_id,
-                message_id=extra_id,
-                content=extra_content,
-                status=MessageStatus.COMPLETED,
-                metadata=metadata,
-            )
-        decision.result_message_id = message.id
-        decision.status = DecisionStatus.COMPLETED.value
-        decision.completed_at = datetime.now(UTC)
         return decision
 
     async def close_unfinished(
@@ -276,7 +271,8 @@ class DialogueService:
                 content=text,
                 status=message_status,
             )
-            decision.result_message_id = message.id
+            if decision.result_message_id is None:
+                decision.result_message_id = message.id
         decision.status = final_status.value
         decision.completed_at = None
 

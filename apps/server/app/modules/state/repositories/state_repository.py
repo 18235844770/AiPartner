@@ -4,7 +4,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.identity.domain.enums import CompanionStatus
-from app.modules.identity.repositories.models import Companion
+from app.modules.identity.repositories.models import Companion, User
 from app.modules.state.repositories.models import CompanionState, StateEvent
 
 
@@ -39,14 +39,20 @@ class StateRepository:
         )
         return list((await session.execute(statement)).scalars().all())
 
-    async def list_active_owners(self, session: AsyncSession, limit: int) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    async def list_active_owners(
+        self, session: AsyncSession, limit: int, *, managed_only: bool = False,
+    ) -> list[tuple[uuid.UUID, uuid.UUID]]:
         statement = (
             select(Companion.id, Companion.owner_user_id)
             .join(CompanionState, CompanionState.companion_id == Companion.id)
+            .join(User, User.id == Companion.owner_user_id)
             .where(Companion.status == CompanionStatus.ACTIVE.value)
+            .where(User.status == "active")
             .order_by(CompanionState.updated_at.asc())
             .limit(limit)
         )
+        if managed_only:
+            statement = statement.where(Companion.initialization_status == "ready")
         return [(row[0], row[1]) for row in (await session.execute(statement)).all()]
 
     async def release_chat_references(

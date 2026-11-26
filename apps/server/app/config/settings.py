@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     server_port: int = 8000
     database_url: str = "postgresql+asyncpg://companion:companion@127.0.0.1:5432/companion"
     redis_url: str = "redis://127.0.0.1:6379/0"
+    account_mode: bool = False
+    proactive_daily_budget: int = Field(default=24, ge=0)
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_timeout_seconds: float = Field(default=60, gt=0)
@@ -33,6 +35,10 @@ class Settings(BaseSettings):
     model_log_sample_rate: float | None = Field(default=None, ge=0, le=1)
     model_log_retention_days: int = Field(default=14, ge=1)
     model_log_expose_snapshots: bool = False
+
+    @property
+    def multi_user_enabled(self) -> bool:
+        return self.account_mode or self.app_env.lower() == "production"
 
 
 @lru_cache

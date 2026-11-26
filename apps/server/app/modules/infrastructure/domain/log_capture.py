@@ -18,6 +18,10 @@ class ModelLogPolicy(BaseModel):
 
 
 def log_policy(settings: Settings) -> ModelLogPolicy:
+    if settings.multi_user_enabled:
+        return ModelLogPolicy(
+            detail="off", sample_rate=0, retention_days=settings.model_log_retention_days, expose_snapshots=False,
+        )
     requested = settings.model_log_detail.strip().lower()
     if requested == "full" or (requested == "" and settings.app_env == "development"):
         detail: DetailMode = "full"

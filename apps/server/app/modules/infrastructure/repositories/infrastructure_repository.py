@@ -61,6 +61,15 @@ class ModelConfigRepository:
 
 
 class BackgroundTaskRepository:
+    async def lock_expired_proactive(
+        self, session: AsyncSession, cutoff: datetime, limit: int,
+    ) -> list[BackgroundTask]:
+        return list(await session.scalars(select(BackgroundTask).where(
+            BackgroundTask.task_type == "proactive_check",
+            BackgroundTask.status.in_(("queued", "running")), BackgroundTask.dispatched_at < cutoff,
+            (BackgroundTask.locked_at.is_(None)) | (BackgroundTask.locked_at < cutoff),
+        ).order_by(BackgroundTask.dispatched_at).limit(limit).with_for_update(skip_locked=True)))
+
     async def add(self, session: AsyncSession, task: BackgroundTask) -> BackgroundTask:
         session.add(task)
         await session.flush()

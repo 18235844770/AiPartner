@@ -38,7 +38,7 @@ class PersonaService:
         companion_id: uuid.UUID,
         data: InitializePersonaRequest,
     ) -> tuple[PersonaProfile, PersonaVersion]:
-        async with session.begin():
+        async with (session.begin_nested() if session.in_transaction() else session.begin()):
             await self._identity.get_owned_companion(session, user_id, companion_id)
             existing = await self._personas.get_by_companion(session, companion_id)
             if existing is not None:

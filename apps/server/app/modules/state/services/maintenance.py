@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config.settings import get_settings
 from app.modules.identity.services.identity_service import IdentityService
 from app.modules.infrastructure.api.schemas import CreateBackgroundTaskRequest
 from app.modules.infrastructure.domain.enums import BackgroundTaskType
@@ -83,7 +84,10 @@ class StateMaintenanceService:
         bucket = moment.strftime("%Y%m%d%H")
         async with self._session_factory() as session:
             async with session.begin():
-                targets = await self._repository.list_active_owners(session, limit)
+                if get_settings().multi_user_enabled:
+                    targets = await self._repository.list_active_owners(session, limit, managed_only=True)
+                else:
+                    targets = await self._repository.list_active_owners(session, limit)
                 created = 0
                 for companion_id, user_id in targets:
                     result = await self._tasks.create(
