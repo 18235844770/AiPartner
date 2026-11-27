@@ -4,16 +4,23 @@ import { useRouter } from "vue-router";
 
 import { assets } from "@/assets/slices";
 import Avatar from "@/components/avatar/Avatar.vue";
+import CompanionCharacter from "@/components/avatar/CompanionCharacter.vue";
 import AppTabBar from "@/components/layout/AppTabBar.vue";
 import ScreenFrame from "@/components/layout/ScreenFrame.vue";
 import { useNow } from "@/composables/useNow";
 import { useDialogueStore } from "@/stores/dialogue";
 import { useWorkspaceStore } from "@/stores/workspace";
 
+import { useThemeStore } from "@/stores/theme";
+import { midnightAssets, midnightState, midnightStatus } from "@/themes/midnight";
+
+const theme = useThemeStore();
 const router = useRouter();
 const workspace = useWorkspaceStore();
 const dialogue = useDialogueStore();
 const now = useNow();
+const state = computed(() => midnightState(dialogue.emotion));
+const statusLabel = computed(() => midnightStatus[state.value]);
 
 const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -39,20 +46,22 @@ function openSettings(): void {
 </script>
 
 <template>
-  <ScreenFrame>
-    <section class="home">
-      <img class="blob lavender" :src="assets.lavenderBlob" alt="" />
-      <img class="blob yellow" :src="assets.yellowBlob" alt="" />
-      <img class="blob pink" :src="assets.pinkBlob" alt="" />
-      <img class="blob mint" :src="assets.mintBlob" alt="" />
+  <ScreenFrame page="home">
+    <section class="home" :class="{ midnight: theme.midnight }">
+      <template v-if="!theme.midnight">
+        <img class="blob lavender" :src="assets.lavenderBlob" alt="" />
+        <img class="blob yellow" :src="assets.yellowBlob" alt="" />
+        <img class="blob pink" :src="assets.pinkBlob" alt="" />
+        <img class="blob mint" :src="assets.mintBlob" alt="" />
         <img class="blob blue" :src="assets.blueBlob" alt="" />
         <img class="blob dot" :src="assets.skyDot" alt="" />
+      </template>
 
       <header>
         <div class="date-row">
           <p class="date">{{ dateLabel }}</p>
           <button class="gear" type="button" aria-label="设置" @click="openSettings">
-            <img :src="assets.settings" alt="" />
+            <img :src="theme.midnight ? midnightAssets.icons['settings-inactive'] : assets.settings" alt="" />
           </button>
         </div>
         <p class="clock">{{ timeLabel }}</p>
@@ -60,18 +69,21 @@ function openSettings(): void {
       </header>
 
       <div class="stage">
-        <img class="heart large" :src="assets.heartLarge" alt="" />
-        <img class="heart small" :src="assets.heartSmall" alt="" />
-        <img class="rays" :src="assets.raysPurple" alt="" />
-        <img class="curve" :src="assets.curveBlue" alt="" />
+        <template v-if="!theme.midnight">
+          <img class="heart large" :src="assets.heartLarge" alt="" />
+          <img class="heart small" :src="assets.heartSmall" alt="" />
+          <img class="rays" :src="assets.raysPurple" alt="" />
+          <img class="curve" :src="assets.curveBlue" alt="" />
+        </template>
         <button class="companion" type="button" :aria-label="`和${workspace.companion?.name ?? '遇见'}聊天`" @click="openChat">
-          <Avatar :expression="dialogue.expression" :width="250" />
+          <CompanionCharacter v-if="theme.midnight" :state="state" animate />
+          <Avatar v-else :expression="dialogue.expression" :width="300" />
         </button>
       </div>
 
-      <button v-if="dialogue.statusLine" class="bubble" type="button" @click="openChat">
-        <span>{{ dialogue.statusLine }}</span>
-        <img :src="assets.heartSmall" alt="" />
+      <button class="mood-status" type="button" @click="openChat">
+        <img :src="theme.midnight ? midnightAssets.decorations.crescent : assets.heartSmall" alt="" />
+        <span>{{ statusLabel }}</span>
       </button>
       <AppTabBar />
     </section>
@@ -80,12 +92,14 @@ function openSettings(): void {
 
 <style scoped>
 .home {
+  --home-gutter: 28px;
+  --companion-width: 300px;
   position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  padding: calc(env(safe-area-inset-top) + 18px) 28px calc(108px + env(safe-area-inset-bottom));
+  padding: calc(env(safe-area-inset-top) + 18px) var(--home-gutter) calc(clamp(118px, 18dvh, 174px) + env(safe-area-inset-bottom));
   background: #fbfafe;
 }
 
@@ -185,12 +199,19 @@ header {
   display: grid;
   place-items: center;
   min-height: 0;
+  container-type: size;
 }
 
 .companion {
+  width: min(100%, var(--companion-width), 100cqh);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
   position: relative;
   z-index: 1;
 }
+
+.companion :deep(.avatar) { max-width: 100%; }
 
 .heart.large {
   width: 42px;
@@ -216,43 +237,40 @@ header {
   bottom: 18%;
 }
 
-.bubble {
+.mood-status {
   position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  z-index: 10;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  flex: none;
   align-self: center;
-  max-width: 86%;
-  margin-bottom: 8px;
-  padding: 12px 16px;
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: var(--shadow-card);
-  font-size: 15px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 0 16px;
+  text-align: center;
+  font-size: 24px;
+  line-height: 1.3;
 }
 
-.bubble::before {
-  content: "";
-  position: absolute;
-  left: 36px;
-  top: -7px;
-  border-width: 0 8px 8px;
-  border-style: solid;
-  border-color: transparent transparent #fff;
-}
-
-.bubble span {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  white-space: pre-wrap;
-}
-
-.bubble img {
-  width: 16px;
-  height: 16px;
+.mood-status img {
+  width: 22px;
+  height: 22px;
   object-fit: contain;
+}
+
+.home.midnight {
+  --companion-width: 440px;
+  background: transparent;
+}
+.midnight header { z-index: 10; }
+.midnight .stage {
+  z-index: 2;
+  margin-inline: calc(-1 * var(--home-gutter));
+}
+.midnight .mood-status {
+  font-family: var(--theme-heading-font);
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 16px var(--theme-glow);
 }
 </style>

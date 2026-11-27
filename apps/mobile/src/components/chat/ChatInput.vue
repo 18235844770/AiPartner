@@ -2,20 +2,22 @@
 import { computed, ref } from "vue";
 
 import { assets } from "@/assets/slices";
+import { useThemeStore } from "@/stores/theme";
+import { midnightAssets } from "@/themes/midnight";
 
-const props = defineProps<{ send: (text: string) => Promise<boolean> }>();
+const props = defineProps<{ send: (text: string) => Promise<void> }>();
 
-const draft = ref("");
+const draft = defineModel<string>({ required: true });
+const theme = useThemeStore();
 const submitting = ref(false);
 
 const canSend = computed(() => !submitting.value && draft.value.trim().length > 0);
 
 async function submit(): Promise<void> {
   if (!canSend.value) return;
-  const previous = draft.value;
   submitting.value = true;
   try {
-    if (await props.send(previous.trim()) && draft.value === previous) draft.value = "";
+    await props.send(draft.value.trim());
   } finally {
     submitting.value = false;
   }
@@ -30,7 +32,7 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <form class="composer" @submit.prevent="submit">
+  <form class="composer" :class="{ midnight: theme.midnight }" @submit.prevent="submit">
     <button class="tool" type="button" aria-label="图片">
       <img :src="assets.image" alt="" />
     </button>
@@ -43,14 +45,17 @@ function onKeydown(event: KeyboardEvent): void {
       aria-label="输入消息"
       @keydown="onKeydown"
     />
-    <button class="send" type="submit" :disabled="!canSend" aria-label="发送">
-      <img :src="assets.send" alt="" />
+    <button class="send" type="submit" :disabled="!canSend" :aria-busy="submitting || undefined" :aria-label="submitting ? '正在发送' : '发送'">
+      <img :src="theme.midnight ? midnightAssets.icons.send : assets.send" alt="" />
     </button>
   </form>
 </template>
 
 <style scoped>
 .composer {
+  position: relative;
+  z-index: 10;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -112,4 +117,13 @@ input:focus {
 .send:active:not(:disabled) {
   transform: scale(0.96);
 }
+
+.midnight {
+  box-shadow: inset 0 1px var(--theme-border);
+  background: rgba(19, 7, 13, 0.91);
+}
+.midnight input { background: var(--theme-surface-raised); border: 1px solid var(--theme-border); }
+.midnight .send { display: grid; place-items: center; background: var(--theme-surface-raised); }
+.midnight .send img { width: 27px; height: 27px; }
+.midnight .tool img { filter: grayscale(1) sepia(0.25); }
 </style>

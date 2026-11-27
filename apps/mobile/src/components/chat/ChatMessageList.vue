@@ -49,7 +49,7 @@ function isGrouped(index: number): boolean {
 
 .retry {
   align-self: flex-end;
-  min-height: 36px;
+  min-height: var(--chat-retry-height, 36px);
   color: var(--color-primary-deep);
   font-size: var(--font-size-sm);
 }
@@ -70,7 +70,7 @@ function isGrouped(index: number): boolean {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #b7a6ef;
+  background: var(--typing-dot, #b7a6ef);
   animation: typing-bounce 1.1s infinite ease-in-out;
 }
 
@@ -86,5 +86,9 @@ function isGrouped(index: number): boolean {
   margin: auto;
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing span { animation: none; }
 }
 </style>

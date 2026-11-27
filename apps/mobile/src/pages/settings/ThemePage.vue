@@ -1,60 +1,54 @@
 <script setup lang="ts">
 import SettingsDetail from "@/components/layout/SettingsDetail.vue";
+import { themes, useThemeStore } from "@/stores/theme";
 
-const swatches = [
-  { name: "主色", color: "#7b55f5" },
-  { name: "淡紫", color: "#eee8ff" },
-  { name: "薄荷", color: "#91dccb" },
-  { name: "黄", color: "#ffd45d" },
-  { name: "粉", color: "#f6a9d1" },
-  { name: "蓝", color: "#a9c9fa" },
-];
+const theme = useThemeStore();
 </script>
 
 <template>
-  <SettingsDetail title="外观设置">
-    <section class="panel panel-body">
-      <h2>Pastel Companion</h2>
-      <p class="hint">现在整个应用用的是这一套柔和配色。</p>
-      <ul>
-        <li v-for="item in swatches" :key="item.name">
-          <i :style="{ background: item.color }" />
-          <span>{{ item.name }}</span>
-        </li>
-      </ul>
-    </section>
+  <SettingsDetail title="主题">
+    <div class="stack" aria-label="主题">
+      <button v-for="(option, id) in themes" :key="id" type="button" class="panel option"
+        :aria-pressed="theme.id === id" @click="theme.select(id)">
+        <span class="sample" :style="{ background: option.colors[0] }" aria-hidden="true">
+          <i v-for="color in option.colors.slice(1)" :key="color" :style="{ background: color }" />
+        </span>
+        <span class="copy">
+          <strong>{{ option.name }}</strong>
+          <small>{{ option.description }}</small>
+        </span>
+        <span v-if="theme.id === id" class="selected">已选</span>
+      </button>
+    </div>
   </SettingsDetail>
 </template>
 
 <style scoped>
-h2 {
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.hint {
-  margin: 6px 0 14px;
-}
-
-ul {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-li {
+.option {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  width: 100%;
+  gap: 14px;
+  min-height: 74px;
+  padding: 12px 16px;
+  text-align: left;
 }
 
-i {
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
-  box-shadow: inset 0 0 0 1px rgba(36, 31, 56, 0.06);
+.sample {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 10px;
+}
+
+.sample i { width: 14px; height: 14px; border-radius: 50%; }
+.copy { display: grid; flex: 1; min-width: 0; }
+.copy small { color: var(--color-text-secondary); }
+.selected { flex: none; color: var(--color-primary-deep); font-size: var(--font-size-sm); }
+
+.option[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1.5px var(--color-primary-light);
 }
 </style>

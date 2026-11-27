@@ -9,6 +9,8 @@ import AppTabBar from "@/components/layout/AppTabBar.vue";
 import ScreenFrame from "@/components/layout/ScreenFrame.vue";
 import { useDialogueStore } from "@/stores/dialogue";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useThemeStore } from "@/stores/theme";
+import { midnightState } from "@/themes/midnight";
 import { errorText } from "@/services/http";
 
 interface SettingsItem {
@@ -25,6 +27,7 @@ interface SettingsSection {
 }
 
 const router = useRouter();
+const theme = useThemeStore();
 const workspace = useWorkspaceStore();
 const dialogue = useDialogueStore();
 const signingOut = ref(false);
@@ -38,54 +41,39 @@ async function signOut(): Promise<void> {
   finally { signingOut.value = false; }
 }
 
+const settings = {
+  profile: { id: "profile", label: "角色资料", icon: assets.profile, to: "/settings/profile" },
+  appearance: { id: "appearance", label: "外观偏好", icon: assets.palette, to: "/settings/appearance" },
+  chat: { id: "chat-settings", label: "聊天设置", icon: assets.chatSettings, to: "/settings/chat" },
+  notifications: { id: "notifications", label: "通知设置", icon: assets.bell, to: "/settings/notifications" },
+  theme: { id: "theme", label: "外观设置", icon: assets.moon, to: "/settings/theme" },
+  privacy: { id: "privacy", label: "数据与隐私", icon: assets.privacy, to: "/settings/privacy" },
+  about: { id: "about", label: "关于我们", icon: assets.info, to: "/settings/about" },
+  support: { id: "support", label: "帮助与支持", icon: assets.support, to: "/settings/support" },
+} satisfies Record<string, SettingsItem>;
+
 const sections: SettingsSection[] = [
-  {
-    id: "companion",
-    title: "陪伴者",
-    items: [
-      { id: "profile", label: "角色资料", icon: assets.profile, to: "/settings/profile" },
-      { id: "appearance", label: "外观偏好", icon: assets.palette, to: "/settings/appearance" },
-    ],
-  },
-  {
-    id: "chat",
-    title: "聊天体验",
-    items: [
-      { id: "chat-settings", label: "聊天设置", icon: assets.chatSettings, to: "/settings/chat" },
-      { id: "notifications", label: "通知设置", icon: assets.bell, to: "/settings/notifications" },
-    ],
-  },
-  {
-    id: "app",
-    title: "应用",
-    items: [
-      { id: "theme", label: "外观设置", icon: assets.moon, to: "/settings/theme" },
-      { id: "privacy", label: "数据与隐私", icon: assets.privacy, to: "/settings/privacy" },
-    ],
-  },
-  {
-    id: "other",
-    title: "其他",
-    items: [
-      { id: "about", label: "关于我们", icon: assets.info, to: "/settings/about" },
-      { id: "support", label: "帮助与支持", icon: assets.support, to: "/settings/support" },
-    ],
-  },
+  { id: "companion", title: "陪伴者", items: [settings.profile, settings.appearance] },
+  { id: "chat", title: "聊天体验", items: [settings.chat, settings.notifications] },
+  { id: "app", title: "应用", items: [settings.theme, settings.privacy] },
+  { id: "other", title: "其他", items: [settings.about, settings.support] },
 ];
+
 </script>
 
 <template>
-  <ScreenFrame>
-    <section class="settings">
+  <ScreenFrame page="settings">
+    <section class="settings" :class="{ midnight: theme.midnight }">
       <div class="scroll">
-        <img class="mint" :src="assets.mintBlob" alt="" />
-        <img class="rays" :src="assets.raysMint" alt="" />
+        <img v-if="!theme.midnight" class="mint" :src="assets.mintBlob" alt="" />
+        <img v-if="!theme.midnight" class="rays" :src="assets.raysMint" alt="" />
         <h1>设置</h1>
 
         <button class="profile" type="button" @click="router.push('/settings/profile')">
           <span class="avatar-wrap">
-            <Avatar :expression="dialogue.expression" :width="84" :motion="false" />
-            <img class="crown" :src="assets.crown" alt="" />
+            <Avatar :expression="dialogue.expression" :width="84" :motion="false"
+              :midnight-state="theme.midnight ? midnightState(dialogue.emotion) : undefined" />
+            <img v-if="!theme.midnight" class="crown" :src="assets.crown" alt="" />
           </span>
           <span class="profile-copy">
             <span class="name">
@@ -175,6 +163,10 @@ h1 {
 .avatar-wrap {
   position: relative;
   flex: none;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  width: 84px;
 }
 
 .crown {
@@ -208,11 +200,6 @@ h1 {
   line-height: 1.45;
 }
 
-.mini-heart {
-  width: 14px;
-  height: 14px;
-  object-fit: contain;
-}
 
 .group {
   margin-top: 18px;
@@ -267,5 +254,28 @@ h2 {
   height: 16px;
   object-fit: contain;
   flex: none;
+}
+
+.settings.midnight { background: transparent; }
+.midnight .scroll { z-index: 10; }
+.midnight .profile,
+.midnight .card {
+  background: var(--theme-surface);
+  box-shadow: inset 0 0 0 1px var(--theme-border);
+}
+
+.midnight h2,
+.midnight .line {
+  color: var(--theme-text-muted);
+}
+
+.midnight .row:active,
+.midnight .profile:active {
+  background: var(--theme-surface-raised);
+}
+
+.midnight .chevron,
+.midnight .card .row-icon {
+  filter: grayscale(1) sepia(0.25);
 }
 </style>

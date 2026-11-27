@@ -106,17 +106,17 @@ function onFocus(event: FocusEvent): void {
   padding: 0 16px;
   border-radius: 18px;
   background: var(--color-input);
-  border: 1.5px solid transparent;
+  border: 1.5px solid var(--input-border, transparent);
 }
 
 .control:focus-within {
   border-color: var(--color-primary-light);
-  background: #fff;
+  background: var(--input-focus-background, #fff);
 }
 
 .invalid {
   border-color: var(--color-danger);
-  background: #fff7f8;
+  background: var(--input-error-background, #fff7f8);
 }
 
 .icon {
@@ -157,4 +157,5 @@ input::placeholder {
   color: var(--color-danger);
   font-size: var(--font-size-sm);
 }
+
 </style>

@@ -1,21 +1,26 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import { assets } from "@/assets/slices";
 import Avatar from "@/components/avatar/Avatar.vue";
 import ChatInput from "@/components/chat/ChatInput.vue";
 import ChatMessageList from "@/components/chat/ChatMessageList.vue";
+import AppTabBar from "@/components/layout/AppTabBar.vue";
 import ScreenFrame from "@/components/layout/ScreenFrame.vue";
 import { useKeyboardInset } from "@/composables/useKeyboardInset";
 import { useDialogueStore } from "@/stores/dialogue";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useThemeStore } from "@/stores/theme";
+import { midnightAssets, midnightState } from "@/themes/midnight";
 
 useKeyboardInset();
 
 const router = useRouter();
 const workspace = useWorkspaceStore();
 const dialogue = useDialogueStore();
+const theme = useThemeStore();
+const state = computed(() => dialogue.sending ? "curious" : midnightState(dialogue.emotion));
 const scroller = ref<HTMLElement | null>(null);
 let preservingScroll = false;
 
@@ -27,18 +32,22 @@ function scrollToEnd(): void {
   element.scrollTop = element.scrollHeight;
 }
 
-function send(text: string): Promise<boolean> {
-  return dialogue.sendMessage(text).finally(() => {
-    void nextTick(scrollToEnd);
-  });
+async function send(text: string): Promise<void> {
+  const originalDraft = dialogue.draft;
+  scrollToEnd();
+  if (await dialogue.sendMessage(text) && dialogue.draft === originalDraft) {
+    dialogue.draft = "";
+  }
 }
 
 watch(
-  () => dialogue.messages,
+  [() => dialogue.messages, () => dialogue.typing, () => dialogue.loading, () => theme.id],
   () => {
-    if (!preservingScroll) void nextTick(scrollToEnd);
+    const element = scroller.value;
+    if (!element || preservingScroll) return;
+    const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
+    if (remaining < 48) void nextTick(scrollToEnd);
   },
-  { deep: true },
 );
 
 async function loadOlder(): Promise<void> {
@@ -59,27 +68,28 @@ async function loadOlder(): Promise<void> {
 </script>
 
 <template>
-  <ScreenFrame>
-    <section class="chat">
-      <img class="wash left" :src="assets.lavenderBlob" alt="" />
-      <img class="wash right" :src="assets.mintBlob" alt="" />
+  <ScreenFrame page="chat">
+    <section class="chat" :class="{ midnight: theme.midnight }">
+      <img v-if="!theme.midnight" class="wash left" :src="assets.lavenderBlob" alt="" />
+      <img v-if="!theme.midnight" class="wash right" :src="assets.mintBlob" alt="" />
 
       <header>
         <button class="nav back" type="button" aria-label="返回" @click="router.push('/home')">
-          <img :src="assets.back" alt="" />
+          <img :src="theme.midnight ? midnightAssets.icons.back : assets.back" alt="" />
         </button>
         <button class="nav more" type="button" aria-label="更多操作" @click="router.push('/settings/chat')">
-          <img :src="assets.moreAction" alt="" />
+          <img :src="theme.midnight ? midnightAssets.icons.more : assets.moreAction" alt="" />
         </button>
         <div class="identity">
           <div class="avatar-wrap">
-            <img class="rays" :src="assets.raysPurple" alt="" />
-            <Avatar :expression="dialogue.expression" :width="78" :motion="false" />
+            <img v-if="!theme.midnight" class="rays" :src="assets.raysPurple" alt="" />
+            <Avatar :expression="dialogue.expression" :width="78" :motion="false"
+              :midnight-state="theme.midnight ? state : undefined" :class="{ thinking: theme.midnight && dialogue.sending }" />
           </div>
           <h1>{{ workspace.companion?.name ?? "遇见" }}</h1>
-          <p class="presence">
+          <p class="presence" role="status">
             <i class="dot" />
-            {{ workspace.presence }}
+            {{ dialogue.sending ? "正在回复" : workspace.presence }}
           </p>
         </div>
       </header>
@@ -92,7 +102,8 @@ async function loadOlder(): Promise<void> {
         </template>
       </div>
       <p v-if="dialogue.error" class="error">{{ dialogue.error }}</p>
-      <ChatInput :send="send" />
+      <ChatInput v-model="dialogue.draft" :send="send" />
+      <AppTabBar />
     </section>
   </ScreenFrame>
 </template>
@@ -165,7 +176,13 @@ header {
 
 .avatar-wrap {
   position: relative;
+  display: grid;
+  place-items: center;
+  width: 78px;
+  aspect-ratio: 1;
 }
+
+.avatar-wrap :deep(.avatar) { max-width: 100%; }
 
 .rays {
   position: absolute;
@@ -216,5 +233,33 @@ h1 {
 
 .error {
   color: var(--color-danger);
+}
+
+.chat.midnight { background: transparent; }
+.midnight header {
+  box-shadow: inset 0 -1px var(--theme-border);
+  background: linear-gradient(transparent, rgba(25, 7, 15, 0.8));
+}
+.midnight .avatar-wrap :deep(.avatar) {
+  padding: 3px;
+  border: 1px solid var(--theme-border);
+  border-radius: 50%;
+  background: radial-gradient(circle at 45% 30%, #411622, var(--theme-bg));
+}
+.midnight h1 { font-family: var(--theme-heading-font); }
+.midnight .thinking { filter: drop-shadow(0 0 7px var(--theme-accent)); }
+.midnight header, .midnight .transcript, .midnight .error { z-index: 10; }
+
+.chat > .tabbar {
+  position: relative;
+  inset: auto;
+  flex: none;
+  margin: 0 16px calc(14px + env(safe-area-inset-bottom));
+}
+
+@container (max-height: 480px) {
+  .chat > .tabbar { display: none; }
+  .chat header { padding-bottom: 4px; }
+  .chat .avatar-wrap { width: 48px; }
 }
 </style>

@@ -4,6 +4,7 @@ import vue from "@vitejs/plugin-vue";
 import { defineConfig } from "vite";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
+const midnight = fileURLToPath(new URL("../../static/Midnight-static-assets", import.meta.url));
 const slices = fileURLToPath(new URL("../../static/slices", import.meta.url));
 
 export default defineConfig({
@@ -13,6 +14,7 @@ export default defineConfig({
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
       "@slices": slices,
+      "@midnight": midnight,
     },
   },
   server: {
@@ -20,7 +22,7 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     fs: {
-      allow: [root, slices],
+      allow: [root, slices, midnight],
     },
     proxy: {
       "/api": {

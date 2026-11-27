@@ -1,0 +1,47 @@
+html[data-theme="midnight"] {
+  color-scheme: dark;
+
+  --theme-bg: #090408;
+  --theme-surface: #190b12;
+  --theme-surface-raised: #291019;
+  --theme-primary: #a81942;
+  --theme-accent: #f04a7c;
+  --theme-text: #f5e6d8;
+  --theme-text-muted: #b79896;
+  --theme-border: rgba(183, 69, 101, 0.30);
+  --theme-glow: rgba(232, 50, 105, 0.28);
+  --theme-heading-font: "Songti SC", SimSun, "Noto Serif CJK SC", Georgia, serif;
+
+  --color-primary: var(--theme-primary);
+  --color-primary-light: var(--theme-accent);
+  --color-primary-deep: #ff8aab;
+  --color-primary-soft: var(--theme-surface-raised);
+  --color-background: var(--theme-bg);
+  --color-surface: var(--theme-surface);
+  --color-input: var(--theme-surface);
+  --color-online: var(--theme-accent);
+  --color-text-primary: var(--theme-text);
+  --color-text-secondary: var(--theme-text-muted);
+  --color-text-disabled: var(--theme-text-muted);
+  --color-border: var(--theme-border);
+  --color-danger: #ff859d;
+  --color-user-bubble: var(--theme-primary);
+  --color-companion-bubble: var(--theme-surface-raised);
+  --shadow-card: inset 0 0 0 1px var(--theme-border);
+  --control-radius: 18px;
+  --primary-button-background: linear-gradient(180deg, #870d2f, var(--theme-primary) 48%, #740e29);
+  --primary-button-shadow: 0 0 16px var(--theme-glow);
+  --primary-button-border: inset 0 0 0 1px var(--theme-border);
+  --secondary-button-border: var(--theme-border);
+  --input-border: var(--theme-border);
+  --input-focus-background: var(--theme-surface-raised);
+  --input-error-background: var(--theme-surface);
+  --typing-dot: var(--theme-accent);
+  --chat-retry-height: 44px;
+
+  --shadow-float: 0 8px 28px rgba(0, 0, 0, 0.45);
+
+  body { background: #0f070c; }
+  :focus-visible { outline-color: var(--theme-accent); }
+  .kicker { color: var(--color-text-secondary); }
+}

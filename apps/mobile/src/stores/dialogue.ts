@@ -18,6 +18,7 @@ export const useDialogueStore = defineStore("dialogue", () => {
   const submitting = ref(false);
   const error = ref("");
   const emotion = ref("");
+  const draft = ref("");
   const hasOlder = ref(false);
   const loadingOlder = ref(false);
   let streamController = new AbortController();
@@ -157,10 +158,10 @@ export const useDialogueStore = defineStore("dialogue", () => {
     history.value.clear();
     previews.value.clear();
     turns.value.clear();
-    error.value = emotion.value = "";
+    error.value = emotion.value = draft.value = "";
     loading.value = submitting.value = hasOlder.value = loadingOlder.value = false;
     if (userId) void open(streamController.signal);
   }, { immediate: true, flush: "sync" });
 
-  return { messages, loading, error, expression, statusLine, typing, hasOlder, loadingOlder, loadOlder, sendMessage, retry };
+  return { messages, loading, error, emotion, expression, statusLine, draft, sending, typing, hasOlder, loadingOlder, loadOlder, sendMessage, retry };
 });

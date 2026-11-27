@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useThemeStore } from "@/stores/theme";
 import type { MessageRole } from "@/types/chat";
+
+const theme = useThemeStore();
 
 defineProps<{
   role: MessageRole;
@@ -9,7 +12,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="row" :class="[role, { grouped }]">
+  <div class="row" :class="[role, { grouped, midnight: theme.midnight }]">
     <p class="bubble">{{ text }}</p>
   </div>
 </template>
@@ -54,4 +57,7 @@ defineProps<{
 .grouped {
   margin-top: 6px;
 }
+
+.midnight .bubble { box-shadow: inset 0 0 0 1px var(--theme-border); }
+.midnight.user .bubble { color: #fff3ed; }
 </style>

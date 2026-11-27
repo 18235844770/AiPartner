@@ -2,6 +2,8 @@
 import { useRouter } from "vue-router";
 
 import { assets } from "@/assets/slices";
+import { useThemeStore } from "@/stores/theme";
+import { midnightAssets } from "@/themes/midnight";
 
 import AppTabBar from "./AppTabBar.vue";
 import ScreenFrame from "./ScreenFrame.vue";
@@ -21,6 +23,7 @@ const props = withDefaults(
 );
 
 const router = useRouter();
+const theme = useThemeStore();
 
 function back(): void {
   void router.push(props.backTo);
@@ -28,12 +31,12 @@ function back(): void {
 </script>
 
 <template>
-  <ScreenFrame>
-    <section class="detail" :class="{ tab }">
-      <img class="mint" :src="assets.mintBlob" alt="" />
+  <ScreenFrame :page="tab ? undefined : 'settings'">
+    <section class="detail" :class="{ tab, midnight: theme.midnight }">
+      <img v-if="!theme.midnight" class="mint" :src="assets.mintBlob" alt="" />
       <header>
         <button v-if="showBack" class="back" type="button" aria-label="返回" @click="back">
-          <img :src="assets.back" alt="" />
+          <img :src="theme.midnight ? midnightAssets.icons.back : assets.back" alt="" />
         </button>
         <h1>{{ title }}</h1>
       </header>
@@ -102,4 +105,8 @@ h1 {
 .tab .body {
   padding-bottom: calc(136px + env(safe-area-inset-bottom));
 }
+
+.detail.midnight { background: transparent; }
+.midnight header, .midnight .body { z-index: 10; }
+.midnight h1 { font-family: var(--theme-heading-font); }
 </style>

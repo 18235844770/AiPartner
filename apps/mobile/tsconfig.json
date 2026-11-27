@@ -14,7 +14,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@slices/*": ["../../static/slices/*"]
+      "@slices/*": ["../../static/slices/*"],
+      "@midnight/*": ["../../static/Midnight-static-assets/*"]
     }
   },
   "include": ["src", "env.d.ts"]

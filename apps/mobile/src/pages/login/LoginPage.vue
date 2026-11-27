@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 
 import { assets } from "@/assets/slices";
 import Avatar from "@/components/avatar/Avatar.vue";
+import CompanionCharacter from "@/components/avatar/CompanionCharacter.vue";
 import AppButton from "@/components/common/AppButton.vue";
 import AppInput from "@/components/common/AppInput.vue";
 import ScreenFrame from "@/components/layout/ScreenFrame.vue";
@@ -11,6 +12,8 @@ import { useKeyboardInset } from "@/composables/useKeyboardInset";
 import { afterLogin } from "@/router";
 import { errorText } from "@/services/http";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useThemeStore } from "@/stores/theme";
+import { midnightAssets } from "@/themes/midnight";
 
 useKeyboardInset();
 
@@ -27,6 +30,7 @@ const submitting = ref(false);
 const canRetrySetup = ref(false);
 const setupAttempt = ref(0);
 const workspace = useWorkspaceStore();
+const theme = useThemeStore();
 const router = useRouter();
 const route = useRoute();
 
@@ -89,8 +93,11 @@ watch([() => workspace.companion?.initialization_status, setupAttempt], ([status
 </script>
 
 <template>
-  <ScreenFrame scroll>
-    <div class="login">
+  <ScreenFrame page="login" scroll>
+    <div class="login" :class="{ midnight: theme.midnight }">
+      <button class="theme-toggle" type="button" @click="theme.select(theme.midnight ? 'cloud' : 'midnight')">
+        {{ theme.midnight ? "切换云朵主题" : "切换夜猫主题" }}
+      </button>
       <div class="lang">
         <button type="button" :aria-expanded="languageOpen" @click="languageOpen = !languageOpen">
           简体中文
@@ -104,23 +111,26 @@ watch([() => workspace.companion?.initialization_status, setupAttempt], ([status
       </div>
 
       <div class="hero" aria-hidden="true">
-        <img class="art yellow" :src="assets.yellowBlob" alt="" />
-        <img class="art pink" :src="assets.pinkBlob" alt="" />
-        <img class="art mint" :src="assets.mintBlob" alt="" />
-        <img class="art blue" :src="assets.blueBlob" alt="" />
-        <img class="art star" :src="assets.starLarge" alt="" />
-        <img class="art star-small" :src="assets.starSmall" alt="" />
+        <template v-if="!theme.midnight">
+          <img class="art yellow" :src="assets.yellowBlob" alt="" />
+          <img class="art pink" :src="assets.pinkBlob" alt="" />
+          <img class="art mint" :src="assets.mintBlob" alt="" />
+          <img class="art blue" :src="assets.blueBlob" alt="" />
+          <img class="art star" :src="assets.starLarge" alt="" />
+          <img class="art star-small" :src="assets.starSmall" alt="" />
+        </template>
         <div class="figure">
-          <Avatar expression="wink" :width="250" />
+          <CompanionCharacter v-if="theme.midnight" state="curious" />
+          <Avatar v-else expression="wink" :width="250" />
         </div>
       </div>
 
       <div class="title-block">
-        <h1>遇见</h1>
-        <img class="title-star" :src="assets.starSmall" alt="" />
-        <img class="swoosh" :src="assets.curvePurple" alt="" />
+        <h1>{{ theme.midnight ? "夜猫" : "遇见" }}</h1>
+        <img class="title-star" :src="theme.midnight ? midnightAssets.decorations.crescent : assets.starSmall" alt="" />
+        <img v-if="!theme.midnight" class="swoosh" :src="assets.curvePurple" alt="" />
       </div>
-      <p class="slogan">让陪伴，自然而然地发生</p>
+      <p class="slogan">{{ theme.midnight ? "你的 AI 陪伴伙伴" : "让陪伴，自然而然地发生" }}</p>
 
       <div v-if="workspace.phase === 'setup'" class="form">
         <p class="notice" role="status">
@@ -139,7 +149,7 @@ watch([() => workspace.companion?.initialization_status, setupAttempt], ([status
           name="username"
           autocomplete="username"
           placeholder="用户名"
-          :icon="assets.profile"
+          :icon="theme.midnight ? midnightAssets.icons.account : assets.profile"
           :error="usernameError"
           :disabled="submitting"
         />
@@ -192,7 +202,7 @@ watch([() => workspace.companion?.initialization_status, setupAttempt], ([status
 
 .lang {
   position: relative;
-  z-index: 2;
+  z-index: 50;
   align-self: flex-end;
 }
 
@@ -200,7 +210,7 @@ watch([() => workspace.companion?.initialization_status, setupAttempt], ([status
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: 36px;
+  min-height: 44px;
   color: #5f5872;
   font-size: var(--font-size-sm);
 }
@@ -214,7 +224,7 @@ watch([() => workspace.companion?.initialization_status, setupAttempt], ([status
 
 .lang-menu {
   position: absolute;
-  top: 36px;
+  top: 44px;
   right: 0;
   min-width: 120px;
   padding: 6px;
@@ -225,7 +235,7 @@ watch([() => workspace.companion?.initialization_status, setupAttempt], ([status
 
 .lang-menu button {
   width: 100%;
-  min-height: 36px;
+  min-height: 44px;
   border-radius: 8px;
   text-align: left;
   padding: 0 10px;
@@ -286,11 +296,14 @@ watch([() => workspace.companion?.initialization_status, setupAttempt], ([status
 
 .figure {
   position: absolute;
+  width: min(100%, 250px);
   left: 50%;
   top: 54%;
   z-index: 1;
   transform: translate(-50%, -50%);
 }
+
+.figure :deep(.avatar) { max-width: 100%; }
 
 .title-block {
   position: relative;
@@ -350,7 +363,25 @@ h1 {
 }
 
 .register button {
+  min-height: 44px;
   color: var(--color-primary);
   font-weight: 700;
 }
+
+.theme-toggle {
+  position: absolute;
+  z-index: 50;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 24px;
+  min-height: 44px;
+  color: var(--color-primary-deep);
+  font-size: var(--font-size-xs);
+}
+
+.login.midnight { background: transparent; }
+.midnight .lang > button { color: var(--theme-text-muted); }
+.midnight .lang-menu { background: var(--theme-surface); box-shadow: inset 0 0 0 1px var(--theme-border); }
+.midnight h1 { font-family: var(--theme-heading-font); }
+.midnight .slogan { color: var(--theme-text); }
+.midnight .register button { color: var(--color-primary-deep); }
 </style>

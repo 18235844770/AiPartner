@@ -39,7 +39,7 @@ withDefaults(
   width: 100%;
   min-height: 56px;
   padding: 0 20px;
-  border-radius: var(--radius-round);
+  border-radius: var(--control-radius, var(--radius-round));
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -55,14 +55,14 @@ withDefaults(
 
 .primary {
   color: #fff;
-  background: linear-gradient(180deg, #8d68f8 0%, #7348f0 100%);
-  box-shadow: 0 8px 18px rgba(123, 85, 245, 0.28);
+  background: var(--primary-button-background, linear-gradient(180deg, #8d68f8 0%, #7348f0 100%));
+  box-shadow: var(--primary-button-shadow, 0 8px 18px rgba(123, 85, 245, 0.28)), var(--primary-button-border, inset 0 0 transparent);
 }
 
 .secondary {
   color: var(--color-text-primary);
   background: var(--color-surface);
-  border: 1.5px solid #e4dfec;
+  border: 1.5px solid var(--secondary-button-border, #e4dfec);
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -93,4 +93,5 @@ withDefaults(
   border-right-color: transparent;
   border-top-color: #fff;
 }
+
 </style>
